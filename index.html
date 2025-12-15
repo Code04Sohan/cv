@@ -2,95 +2,180 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>My CV - Data Analytics Fresher</title>
+    <title>Sohan Adhikari // Developer Portfolio @BAHA Interactive</title>
     <style>
+        /* Creative, Animated, and Modern Tech Style */
+        :root {
+            --primary-color: #00bcd4; /* Cyan/Aqua */
+            --secondary-color: #ff5722; /* Accent Orange for highlights/hover */
+            --background-color: #1a1a1a; /* Deeper Dark background */
+            --text-color: #f0f0f0; 
+            --card-background: #252525; 
+            --border-color: #3d3d3d;
+            --font-main: 'Fira Code', 'Consolas', monospace; /* Developer font */
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulseBorder {
+            0% { box-shadow: 0 0 0 0 rgba(0, 188, 212, 0.4); }
+            70% { box-shadow: 0 0 0 8px rgba(0, 188, 212, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 188, 212, 0); }
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: var(--font-main);
             margin: 0;
             padding: 0;
-            background-color: #f4f7f6; 
-            color: #333;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.7;
         }
         .container {
-            width: 80%;
-            margin: 30px auto;
-            background-color: #ECFFFF;
-            padding: 30px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            border-radius: 12px;
+            width: 90%;
+            max-width: 950px;
+            margin: 50px auto;
+            background-color: var(--card-background);
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            animation: fadeIn 1s ease-out;
         }
         .header {
             text-align: center;
-            border-bottom: 3px solid #007BFF;
-            padding-bottom: 20px;
-            margin-bottom: 20px;
+            padding-bottom: 25px;
+            margin-bottom: 30px;
         }
         .profile-pic {
-            width: 150px;
-            height: 150px;
+            width: 140px;
+            height: 140px;
             object-fit: cover;
             border-radius: 50%;
-            border: 4px solid #007BFF;
+            border: 4px solid var(--primary-color);
             margin-bottom: 15px;
+            transition: transform 0.3s, border-color 0.3s;
+            animation: pulseBorder 2s infinite; /* Subtle animation */
+        }
+        .profile-pic:hover {
+            transform: scale(1.05);
+            border-color: var(--secondary-color);
         }
         h1 {
-            font-size: 2.5em;
-            color: #007BFF;
-            margin: 0;
+            font-size: 2.8em;
+            color: var(--primary-color);
+            margin: 5px 0 10px 0;
+            text-transform: capitalize;
+            letter-spacing: 3px;
         }
         h2 {
-            font-size: 1.5em;
-            color: #007BFF;
-            border-bottom: 2px solid #ddd;
+            font-size: 1.6em;
+            color: var(--secondary-color);
+            border-bottom: 1px solid var(--border-color);
             padding-bottom: 8px;
-            margin-top: 25px;
+            margin-top: 40px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
         }
         .contact-info {
-            font-size: 1em;
-            line-height: 1.6;
+            font-size: 0.95em;
+            color: #b3b3b3;
         }
         .contact-info a {
-            color: #0056b3;
+            color: var(--primary-color);
             text-decoration: none;
             font-weight: bold;
+            transition: color 0.2s;
         }
         .contact-info a:hover {
+            color: var(--secondary-color);
             text-decoration: underline;
         }
-        section {
-            margin-bottom: 20px;
+        
+        /* MODIFIED STYLING FOR BAHA INTERACTIVE */
+        .owner-tag {
+            display: inline-block; /* Changed to inline-block for padding/border */
+            margin-top: 15px;
+            margin-bottom: 10px;
+            color: var(--background-color);
+            background-color: var(--primary-color); /* Highlight color */
+            font-size: 1.2em; /* Increased size */
+            font-weight: 900; /* Extra bold */
+            padding: 5px 15px;
+            border-radius: 4px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px rgba(0, 188, 212, 0.7); /* Subtle glow */
         }
+        /* END MODIFIED STYLING */
+
+        section {
+            margin-bottom: 35px;
+        }
+        
+        /* EDUCATION TABLE - Made it sleeker */
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 15px;
+            font-size: 0.9em;
         }
         th, td {
-            border: 1px solid #ddd;
+            border: 1px solid var(--border-color);
             padding: 12px;
             text-align: left;
             vertical-align: top;
         }
         th {
-            background-color: #e9ecef;
-            color: #495057;
+            background-color: #3a3a3a;
+            color: var(--primary-color);
+            font-weight: normal;
+        }
+        td {
+            background-color: var(--card-background);
+            transition: background-color 0.3s;
+        }
+        tr:hover td {
+            background-color: #2f2f2f; /* Darken row on hover */
+        }
+
+        /* SKILLS SECTION - Changed to tags/chips style */
+        .skills-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding-left: 0;
+            list-style: none;
+        }
+        .skills-list li {
+            background-color: var(--secondary-color);
+            color: var(--background-color);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
             font-weight: bold;
+            transition: transform 0.2s, background-color 0.2s;
+            cursor: default;
         }
-        ul {
-            list-style-type: disc;
-            padding-left: 20px;
+        .skills-list li:hover {
+            transform: translateY(-2px) scale(1.05);
+            background-color: #ff9800;
         }
-        li {
-            margin-bottom: 8px;
+        
+        /* PROJECT Section Placeholder Styling */
+        .projects-section p {
+            font-size: 1.1em;
+            color: #aaaaaa;
+            font-style: italic;
+            margin-top: 10px;
         }
-        .highlight-section {
-            background-color: #eaf6ff;
-            padding: 20px;
-            border-left: 5px solid #007BFF;
-            border-radius: 8px;
-        }
+
         strong {
-            font-weight: 600;
+            font-weight: bold;
+            color: #fff;
         }
     </style>
 </head>
@@ -104,7 +189,7 @@
                 <strong>Phone:</strong> +91-9144823107 | 
                 <strong>LinkedIn:</strong> <a href="https://www.linkedin.com/in/sohan-adhikari-42827028b/" target="_blank">sohan-adhikari-42827028b</a> | 
                 <strong>Location:</strong> Kolkata, India</p>
-                <strong>Owner @BAHA Interactive</strong>
+                <span class="owner-tag">Owner @BAHA Interactive</span>
             </div>
         </div>
 
@@ -145,17 +230,25 @@
 
         <section class="highlight-section">
             <h2>Technical Skills 💻</h2>
-            <ul>
-                <li><strong>Languages:</strong> Python, Java, C, C++, C#</li>
-                <li><strong>Databases:</strong> SQL and Exel Based Databases</li>
-                <li><strong>Web:</strong> HTML , CSS , JS</li>
-                <li><strong>Machine Learning:</strong> Machine Learning (Basics), Deep Learning (Basic Neural Network)</li>
+            <ul class="skills-list">
+                <li>Python</li>
+                <li>Java</li>
+                <li>C</li>
+                <li>C++</li>
+                <li>C#</li>
+                <li>SQL</li>
+                <li>Exel Databases</li>
+                <li>HTML</li>
+                <li>CSS</li>
+                <li>JS</li>
+                <li>Machine Learning (Basics)</li>
+                <li>Deep Learning (Basic NN)</li>
             </ul>
         </section>
 
-        <section class="highlight-section">
+        <section class="highlight-section projects-section">
             <h2>Projects 📂</h2>
-            <p></p>
+            <p>// **Placeholder:** Add details of your top projects here (e.g., project name, description, link) to make this section pop!</p>
         </section>
 
         <section class="highlight-section">
@@ -167,4 +260,3 @@
     </div>
 </body>
 </html>
-
