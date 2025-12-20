@@ -2,68 +2,43 @@
 // Add your apps here. Copy/Paste an object to add a new app.
 const appsData = [
     {
-        id: "baha-connect",
-        name: "BAHA Connect",
-        shortDesc: "Unified communication tool for remote teams.",
-        fullDesc: "BAHA Connect allows seamless collaboration for distributed teams across India. Featuring low-latency voice chat, file sharing up to 2GB, and integrated task management boards.",
-        icon: "fa-solid fa-paper-plane", // Using FontAwesome icons as placeholders, can be image URLs
+        id: "admin_panel",
+        name: "Admin Panel App",
+        shortDesc: "Exel Based Database Explorer",
+        fullDesc: "This app helps to explore, get filtered data, & other managerment tasks on any exel based databases. It linked with online Google spreadsheet and Save them as well for use. Also can export filtered and non-filtered data as xlsx and xls format",
+        icon: "assets/admin_panel/admin_panel_icon.jpg",    
         color: "bg-blue-500",
         versions: [
             {
-                version: "2.4.1",
+                version: "1.2.1",
                 date: "20 Dec 2025",
-                size: "45 MB",
+                size: "40 MB",
                 type: "stable",
-                downloadUrl: "#",
+                downloadUrl: "https://www.dropbox.com/scl/fi/yj1dp8w9jxpwotr3jacfe/admin_panel.exe?rlkey=60w2jadj1pvzoo74cad71olfw&st=upt8qu5d&dl=1",
                 changelog: [
-                    "Fixed notification delay on Android 15.",
-                    "Added dark mode support for chat bubbles.",
-                    "Improved file upload speeds."
+                    "Add online authorization and verification",
+                    "Added saved links and switching feature.",
+                    "Other small adjustments"
                 ]
             },
             {
-                version: "2.3.0",
-                date: "10 Nov 2025",
-                size: "42 MB",
+                version: "1.1.0",
+                date: "15 Nov 2025",
+                size: "40 MB",
                 type: "stable",
-                downloadUrl: "#",
+                downloadUrl: "https://www.dropbox.com/scl/fi/yj1dp8w9jxpwotr3jacfe/admin_panel.exe?rlkey=60w2jadj1pvzoo74cad71olfw&st=upt8qu5d&dl=1",
                 changelog: [
-                    "Introduced video calling beta.",
-                    "UI overhaul for settings menu."
+                    "All Basic Features",
+                    "Explore Database",
+                    "Student Profile System"
                 ]
             }
         ],
         screenshots: [
-            "https://placehold.co/300x600/1e293b/FFF?text=Chat+View",
-            "https://placehold.co/300x600/3b82f6/FFF?text=Video+Call",
-            "https://placehold.co/300x600/0f172a/FFF?text=Settings"
-        ]
-    },
-    {
-        id: "sky-raider",
-        name: "Sky Raider: Infinite",
-        shortDesc: "Arcade shooter game with retro vibes.",
-        fullDesc: "Take to the skies in Sky Raider. A procedural infinite runner shooter game. Upgrade your ship, fight massive bosses, and compete on the global leaderboard.",
-        icon: "fa-solid fa-rocket",
-        color: "bg-orange-500",
-        versions: [
-            {
-                version: "1.0.5",
-                date: "15 Dec 2025",
-                size: "120 MB",
-                type: "beta",
-                downloadUrl: "#",
-                changelog: [
-                    "New Boss: The Titan added to Level 5.",
-                    "Performance optimization for 60fps on mid-range devices.",
-                    "Fixed audio glitch on game over."
-                ]
-            }
-        ],
-        screenshots: [
-            "https://placehold.co/600x350/orange/white?text=Gameplay+Action",
-            "https://placehold.co/600x350/black/red?text=Boss+Fight",
-            "https://placehold.co/600x350/green/white?text=Menu"
+            "assets/admin_panel/Screenshot 2025-1.png",
+            "assets/admin_panel/Screenshot 2025-2.png",
+            "assets/admin_panel/Screenshot 2025-3.png",
+            "assets/admin_panel/Screenshot 2025-4.png"
         ]
     }
 ];
@@ -83,27 +58,34 @@ const router = {
 
     renderList() {
         const container = document.getElementById('app-list-container');
-        container.innerHTML = appsData.map(app => `
-                    <div onclick="router.openApp('${app.id}')" 
-                         class="bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-100 transition-all cursor-pointer flex items-center gap-4 group">
-                        <div class="w-16 h-16 ${app.color} rounded-2xl flex items-center justify-center text-white text-2xl shadow-sm group-hover:scale-105 transition-transform">
-                            <i class="${app.icon}"></i>
-                        </div>
-                        <div class="flex-1">
-                            <h3 class="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">${app.name}</h3>
-                            <p class="text-sm text-slate-500 line-clamp-2">${app.shortDesc}</p>
-                            <div class="mt-2 flex items-center gap-2">
-                                <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
-                                    v${app.versions[0].version}
-                                </span>
-                                <span class="text-xs text-slate-400">${app.versions[0].date}</span>
-                            </div>
-                        </div>
-                        <div class="text-slate-300 group-hover:text-indigo-500">
-                            <i class="fa-solid fa-chevron-right"></i>
+        container.innerHTML = appsData.map(app => {
+            // LOGIC: Check if 'icon' is an image URL or a FontAwesome class
+            const isImage = app.icon.includes('/') || app.icon.includes('.') || app.icon.includes('http');
+            
+            const iconHtml = isImage 
+                ? `<img src="${app.icon}" class="w-16 h-16 rounded-2xl shadow-sm group-hover:scale-105 transition-transform object-cover bg-white" alt="${app.name} Icon">` 
+                : `<div class="w-16 h-16 ${app.color} rounded-2xl flex items-center justify-center text-white text-2xl shadow-sm group-hover:scale-105 transition-transform"><i class="${app.icon}"></i></div>`;
+
+            return `
+                <div onclick="router.openApp('${app.id}')" 
+                     class="bg-white rounded-xl p-5 shadow-sm border border-slate-100 hover:shadow-md hover:border-indigo-100 transition-all cursor-pointer flex items-center gap-4 group">
+                    ${iconHtml}
+                    <div class="flex-1">
+                        <h3 class="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">${app.name}</h3>
+                        <p class="text-sm text-slate-500 line-clamp-2">${app.shortDesc}</p>
+                        <div class="mt-2 flex items-center gap-2">
+                            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                                v${app.versions[0].version}
+                            </span>
+                            <span class="text-xs text-slate-400">${app.versions[0].date}</span>
                         </div>
                     </div>
-                `).join('');
+                    <div class="text-slate-300 group-hover:text-indigo-500">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </div>
+                </div>
+            `;
+        }).join('');
     },
 
     openApp(id) {
@@ -118,10 +100,18 @@ const router = {
         const latestVersion = app.versions[0];
         const olderVersions = app.versions.slice(1);
 
+        // LOGIC: Check if 'icon' is an image URL or a FontAwesome class (For Detail Page)
+        const isImage = app.icon.includes('/') || app.icon.includes('.') || app.icon.includes('http');
+        
+        const headerIconHtml = isImage
+            ? `<img src="${app.icon}" class="w-24 h-24 rounded-2xl shadow-md flex-shrink-0 object-cover bg-white" alt="${app.name} Icon">`
+            : `<div class="w-24 h-24 ${app.color} rounded-2xl flex-shrink-0 flex items-center justify-center text-white text-4xl shadow-md"><i class="${app.icon}"></i></div>`;
+
+
         // Generate Screenshots HTML
         const screenshotsHtml = app.screenshots.map(src => `
                     <div class="flex-none w-48 md:w-64 aspect-[9/16] md:aspect-video rounded-lg overflow-hidden border border-slate-200 shadow-sm cursor-zoom-in" onclick="gallery.open('${src}')">
-                        <img src="${src}" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Screenshot">
+                        <img src="${src}" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" alt="Screenshot" onerror="this.src='https://placehold.co/400x300/e2e8f0/64748b?text=No+Image'">
                     </div>
                 `).join('');
 
@@ -157,15 +147,13 @@ const router = {
         detailContent.innerHTML = `
                     <!-- Header Info -->
                     <div class="flex items-start gap-5 mb-6">
-                        <div class="w-24 h-24 ${app.color} rounded-2xl flex-shrink-0 flex items-center justify-center text-white text-4xl shadow-md">
-                            <i class="${app.icon}"></i>
-                        </div>
+                        ${headerIconHtml}
                         <div class="pt-1">
                             <h1 class="text-2xl md:text-3xl font-bold text-slate-900 leading-tight">${app.name}</h1>
                             <p class="text-slate-500 mt-1 text-sm md:text-base">${app.shortDesc}</p>
                             <div class="flex gap-2 mt-3">
                                 <span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded uppercase tracking-wide">Official</span>
-                                <span class="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded">Android & iOS</span>
+                                <span class="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded">Windows PC</span>
                             </div>
                         </div>
                     </div>
@@ -227,19 +215,10 @@ const router = {
                     </div>
                 `;
 
-        // Observe sticky behavior to change styling
+        // Observe sticky behavior
         const stickyEl = document.getElementById('sticky-header');
-        const observer = new IntersectionObserver(
-            ([e]) => e.target.classList.toggle('is-stuck', e.intersectionRatio < 1),
-            { threshold: [1] }
-        );
-        // Note: CSS sticky requires a trick to detect stuck state (top: -1px check), 
-        // but for simplicity, we rely on scroll position for styling changes if needed, 
-        // or just keep the style consistent. 
-        // Simple Scroll Listener for visual "Stickiness":
         window.addEventListener('scroll', () => {
             const rect = stickyEl.getBoundingClientRect();
-            // If element hits the top offset (approx 16px or 64px from nav)
             if (rect.top <= 80) {
                 stickyEl.classList.add('is-stuck');
             } else {
@@ -270,13 +249,13 @@ const gallery = {
     img: document.getElementById('lightbox-img'),
 
     open(src) {
+        if (!src) return;
         this.img.src = src;
         this.el.classList.remove('hidden');
-        // Small timeout to allow display:block to apply before opacity transition
         setTimeout(() => {
             this.el.classList.remove('opacity-0', 'pointer-events-none');
         }, 10);
-        document.body.style.overflow = 'hidden'; // Prevent scrolling
+        document.body.style.overflow = 'hidden';
     },
 
     close() {

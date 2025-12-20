@@ -1,44 +1,33 @@
-/* Creative, Animated, and Modern Tech Style */
+/* --- IMPORTS --- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+
+/* --- VARIABLES --- */
 :root {
-    --primary-color: #00bcd4;
-    /* Cyan/Aqua */
-    --secondary-color: #ff5722;
-    /* Accent Orange for highlights/hover */
-    --background-color: #1a1a1a;
-    /* Deeper Dark background */
-    --text-color: #f0f0f0;
-    --card-background: #252525;
+    --primary-color: #00bcd4;     /* Cyan/Aqua */
+    --secondary-color: #ff5722;   /* Accent Orange */
+    --background-color: #1a1a1a;  /* Dark Background */
+    --text-color: #f0f0f0;        /* Light Text */
+    --card-background: #252525;   /* Card BG */
     --border-color: #3d3d3d;
-    --font-main: 'Fira Code', 'Consolas', monospace;
-    /* Developer font */
+    
+    /* Fonts */
+    --font-main: 'Inter', sans-serif;       /* Clean UI Font */
+    --font-code: 'Fira Code', monospace;    /* Tech/Code Font */
 }
 
+/* --- ANIMATIONS --- */
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes pulseBorder {
-    0% {
-        box-shadow: 0 0 0 0 rgba(0, 188, 212, 0.4);
-    }
-
-    70% {
-        box-shadow: 0 0 0 8px rgba(0, 188, 212, 0);
-    }
-
-    100% {
-        box-shadow: 0 0 0 0 rgba(0, 188, 212, 0);
-    }
+    0% { box-shadow: 0 0 0 0 rgba(0, 188, 212, 0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(0, 188, 212, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 188, 212, 0); }
 }
 
+/* --- BASE STYLES --- */
 body {
     font-family: var(--font-main);
     margin: 0;
@@ -46,6 +35,7 @@ body {
     background-color: var(--background-color);
     color: var(--text-color);
     line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
 }
 
 .container {
@@ -55,14 +45,17 @@ body {
     background-color: var(--card-background);
     padding: 40px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    border-radius: 8px;
+    /* Softened corners for the main card */
+    border-radius: 24px;
     animation: fadeIn 1s ease-out;
 }
 
+/* --- HEADER --- */
 .header {
     text-align: center;
     padding-bottom: 25px;
     margin-bottom: 30px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .profile-pic {
@@ -74,7 +67,6 @@ body {
     margin-bottom: 15px;
     transition: transform 0.3s, border-color 0.3s;
     animation: pulseBorder 2s infinite;
-    /* Subtle animation */
 }
 
 .profile-pic:hover {
@@ -83,33 +75,44 @@ body {
 }
 
 h1 {
-    font-size: 2.8em;
+    font-family: var(--font-main);
+    font-size: 2.5em;
+    font-weight: 700;
     color: var(--primary-color);
     margin: 5px 0 10px 0;
-    text-transform: capitalize;
-    letter-spacing: 3px;
+    letter-spacing: -0.5px;
 }
 
-h2 {
-    font-size: 1.6em;
-    color: var(--secondary-color);
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 8px;
-    margin-top: 40px;
+/* --- ROUNDED TITLE STYLE (Pill Look) --- */
+.highlight-section h2 {
+    font-family: var(--font-main);
+    font-size: 0.85rem;      
     text-transform: uppercase;
-    letter-spacing: 1px;
-    font-weight: 500;
+    letter-spacing: 1.5px;   
+    font-weight: 700;        
+    color: #334155;          
+    background: #f1f5f9;     
+    padding: 8px 20px;       /* Increased horizontal padding */
+    /* Fully rounded pill shape */
+    border-radius: 50px;     
+    display: inline-block;   
+    margin-top: 30px;
+    margin-bottom: 20px;
+    border-left: 5px solid var(--primary-color); /* Thicker accent */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* --- CONTACT INFO --- */
 .contact-info {
     font-size: 0.95em;
     color: #b3b3b3;
+    margin-top: 15px;
 }
 
 .contact-info a {
     color: var(--primary-color);
     text-decoration: none;
-    font-weight: bold;
+    font-weight: 600;
     transition: color 0.2s;
 }
 
@@ -118,138 +121,216 @@ h2 {
     text-decoration: underline;
 }
 
-/* MODIFIED STYLING FOR BAHA INTERACTIVE */
 .owner-tag {
     display: inline-block;
-    /* Changed to inline-block for padding/border */
     margin-top: 15px;
-    margin-bottom: 10px;
     color: var(--background-color);
     background-color: var(--primary-color);
-    /* Highlight color */
-    font-size: 1.2em;
-    /* Increased size */
-    font-weight: 900;
-    /* Extra bold */
-    padding: 5px 15px;
-    border-radius: 4px;
-    letter-spacing: 1px;
+    font-size: 0.9em;
+    font-weight: 800;
+    padding: 6px 16px;
+    border-radius: 50px; /* Fully rounded */
+    letter-spacing: 0.5px;
     text-transform: uppercase;
-    box-shadow: 0 0 10px rgba(0, 188, 212, 0.7);
-    /* Subtle glow */
+    box-shadow: 0 4px 15px rgba(0, 188, 212, 0.3);
 }
 
-/* END MODIFIED STYLING */
-
-section {
-    margin-bottom: 35px;
-}
-
-/* EDUCATION TABLE - Made it sleeker */
+/* --- TABLES --- */
 table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 15px;
-    font-size: 0.9em;
+    margin-top: 5px;
+    font-size: 0.95em;
+    font-family: var(--font-code); 
 }
 
-th,
-td {
+th, td {
     border: 1px solid var(--border-color);
-    padding: 12px;
+    padding: 14px;
     text-align: left;
-    vertical-align: top;
+    vertical-align: middle;
 }
+
+/* Round the corners of the table headers */
+th:first-child { border-top-left-radius: 12px; }
+th:last-child { border-top-right-radius: 12px; }
+tr:last-child td:first-child { border-bottom-left-radius: 12px; }
+tr:last-child td:last-child { border-bottom-right-radius: 12px; }
 
 th {
-    background-color: #3a3a3a;
+    background-color: #333;
     color: var(--primary-color);
-    font-weight: normal;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85em;
+    letter-spacing: 1px;
 }
 
 td {
-    background-color: var(--card-background);
+    background-color: #2a2a2a;
     transition: background-color 0.3s;
 }
 
 tr:hover td {
-    background-color: #2f2f2f;
-    /* Darken row on hover */
+    background-color: #333;
 }
 
-/* SKILLS SECTION - Changed to tags/chips style */
+/* --- SKILLS LIST --- */
 .skills-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 12px;
     padding-left: 0;
     list-style: none;
 }
 
 .skills-list li {
-    background-color: var(--secondary-color);
-    color: var(--background-color);
-    padding: 8px 15px;
-    border-radius: 20px;
+    background-color: rgba(255, 87, 34, 0.1); 
+    border: 1px solid var(--secondary-color);
+    color: var(--secondary-color);
+    padding: 6px 16px;
+    /* Fully rounded pills */
+    border-radius: 50px; 
     font-size: 0.9em;
-    font-weight: bold;
-    transition: transform 0.2s, background-color 0.2s;
+    font-family: var(--font-code);
+    font-weight: 500;
+    transition: all 0.2s ease;
     cursor: default;
 }
 
 .skills-list li:hover {
-    transform: translateY(-2px) scale(1.05);
-    background-color: #ff9800;
+    transform: translateY(-2px);
+    background-color: var(--secondary-color);
+    color: white;
+    box-shadow: 0 4px 10px rgba(255, 87, 34, 0.3);
 }
 
-/* PROJECT Section Placeholder Styling */
-.projects-section p {
-    font-size: 1.1em;
-    color: #aaaaaa;
-    font-style: italic;
-    margin-top: 10px;
-}
-
-strong {
-    font-weight: bold;
-    color: #fff;
-}
-
+/* --- PROJECT LIST --- */
 .project-list {
     list-style: none;
     padding: 0;
-    margin-top: 10px;
 }
 
 .project-list li {
-    margin-bottom: 12px;
+    margin-bottom: 15px;
     position: relative;
-    padding-left: 25px;
+    padding-left: 28px;
     line-height: 1.5;
 }
 
 .project-list li::before {
-    content: "🔗";
+    content: "📂";
     position: absolute;
     left: 0;
     top: 2px;
-    font-size: 0.9em;
+    font-size: 1em;
 }
 
 .project-list a {
     text-decoration: none;
-    color: #00bcd4;
-    /* Blue shade matching typical links */
+    color: var(--primary-color);
     font-weight: 600;
+    font-size: 1.05em;
     transition: color 0.2s;
 }
 
 .project-list a:hover {
-    color: #1e40af;
-    text-decoration: underline;
+    color: var(--secondary-color);
 }
 
 .project-desc {
-    color: #555;
-    font-size: 0.95em;
+    display: block;
+    color: #999;
+    font-size: 0.9em;
+    margin-top: 4px;
+}
+
+strong {
+    color: #fff;
+    font-weight: 600;
+}
+
+/* =========================================
+   MOBILE RESPONSIVENESS & OPTIMIZATION
+   ========================================= */
+@media screen and (max-width: 768px) {
+    .container {
+        width: 92%;
+        margin: 20px auto;
+        padding: 25px 20px;
+    }
+
+    .header {
+        padding-bottom: 20px;
+        margin-bottom: 20px;
+    }
+
+    h1 {
+        font-size: 1.8em; 
+        margin-bottom: 15px;
+    }
+
+    .profile-pic {
+        width: 100px;
+        height: 100px;
+    }
+
+    .contact-info {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 0.9em;
+    }
+    
+    .contact-info p {
+        line-height: 1.8;
+    }
+
+    .owner-tag {
+        font-size: 0.8em;
+        padding: 5px 12px;
+    }
+
+    .highlight-section h2 {
+        width: 100%; 
+        box-sizing: border-box;
+        text-align: center;
+        border-left: none;
+        /* Keep roundness on mobile too */
+        border-radius: 50px; 
+        margin-bottom: 15px;
+    }
+
+    .highlight-section {
+        overflow-x: auto; 
+    }
+    
+    table {
+        min-width: 500px; 
+        font-size: 0.85em; 
+    }
+
+    th, td {
+        padding: 10px;
+    }
+
+    .skills-list {
+        justify-content: flex-start;
+    }
+    
+    .skills-list li {
+        font-size: 0.8em;
+        padding: 5px 12px;
+    }
+
+    .project-list li {
+        padding-left: 0;
+        margin-bottom: 20px;
+    }
+    
+    .project-list li::before {
+        position: static; 
+        display: block;
+        margin-bottom: 5px;
+    }
 }
