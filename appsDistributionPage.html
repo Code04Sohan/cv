@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAHA Interactive | App Distribution</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles/appsDistributionPage.css">
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Navigation / Header -->
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="router.goHome()">
+                <!-- Placeholder Company Logo -->
+                <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                    BI
+                </div>
+                <h1 class="font-bold text-lg tracking-tight text-slate-900">BAHA <span class="text-indigo-600 font-normal">Interactive</span></h1>
+            </div>
+            <a href="mailto:support@baha-interactive.in" class="text-sm text-slate-500 hover:text-indigo-600 font-medium">Support</a>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow max-w-3xl mx-auto w-full p-4 md:p-6 relative">
+        
+        <!-- View: App List (Home) -->
+        <div id="view-home" class="fade-in">
+            <header class="mb-8 text-center md:text-left py-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-2">Our Apps & Software</h2>
+                <p class="text-slate-500 max-w-lg">India-based tech solutions designed for performance and simplicity.</p>
+            </header>
+
+            <div id="app-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- App items will be injected here via JS -->
+            </div>
+        </div>
+
+        <!-- View: App Detail -->
+        <div id="view-detail" class="hidden absolute top-0 left-0 w-full min-h-full bg-[#f8fafc] z-10 pb-20">
+            <!-- Back Button -->
+            <button onclick="router.goHome()" class="mb-4 flex items-center gap-2 text-slate-500 hover:text-indigo-600 transition-colors py-2">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span class="font-medium">Back to Apps</span>
+            </button>
+
+            <!-- Dynamic Content Container -->
+            <div id="detail-content" class="slide-in-right">
+                <!-- Detail content injected here -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-8 mt-auto">
+        <div class="max-w-3xl mx-auto px-4 text-center">
+            <p class="text-slate-900 font-semibold mb-2">BAHA Interactive</p>
+            <p class="text-xs text-slate-500 mb-4">India Based Online Tech Solutions & Game Studio</p>
+            <p class="text-xs text-slate-400">&copy; 2025-2026 BAHA Interactive. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Lightbox Modal -->
+    <div id="lightbox" class="fixed inset-0 bg-black/90 z-[100] hidden flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300" onclick="gallery.close()">
+        <button class="absolute top-4 right-4 text-white p-4 hover:text-indigo-400">
+            <i class="fa-solid fa-xmark text-2xl"></i>
+        </button>
+        <img id="lightbox-img" src="" alt="Screenshot Fullscreen" class="max-h-[90vh] max-w-full rounded shadow-2xl object-contain">
+    </div>
+
+    <!-- JavaScript Data & Logic -->
+    <script src="scripts/appsDistributionPage.js"></script>
+</body>
+</html>

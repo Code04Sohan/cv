@@ -214,3 +214,42 @@ strong {
     font-weight: bold;
     color: #fff;
 }
+
+.project-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 10px;
+}
+
+.project-list li {
+    margin-bottom: 12px;
+    position: relative;
+    padding-left: 25px;
+    line-height: 1.5;
+}
+
+.project-list li::before {
+    content: "🔗";
+    position: absolute;
+    left: 0;
+    top: 2px;
+    font-size: 0.9em;
+}
+
+.project-list a {
+    text-decoration: none;
+    color: #00bcd4;
+    /* Blue shade matching typical links */
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+.project-list a:hover {
+    color: #1e40af;
+    text-decoration: underline;
+}
+
+.project-desc {
+    color: #555;
+    font-size: 0.95em;
+}
