@@ -10,6 +10,20 @@ const appsData = [
         color: "bg-blue-500",
         versions: [
             {
+                version: "1.4.1",
+                date: "23 Dec 2025",
+                size: "41 MB",
+                type: "stable",
+                downloadUrl: "https://www.dropbox.com/scl/fi/t46gowpsadi8m6h3e8e59/Admin-Panel-Setup.exe?rlkey=n7mlti7xal2qzsx9l6dermjaz&st=4fvk9ah5&dl=1",
+                changelog: [
+                    "wrap-up the as setup for windows pc",
+                    "Add online authorization and verification",
+                    "Added saved links and switching feature.",
+                    "Other small adjustments",
+                    "app settings(settings.json) save location fix"
+                ]
+            },
+            {
                 version: "1.2.1",
                 date: "20 Dec 2025",
                 size: "40 MB",
@@ -26,7 +40,7 @@ const appsData = [
                 date: "15 Nov 2025",
                 size: "40 MB",
                 type: "stable",
-                downloadUrl: "https://www.dropbox.com/scl/fi/t46gowpsadi8m6h3e8e59/Admin-Panel-Setup.exe?rlkey=n7mlti7xal2qzsx9l6dermjaz&st=ojyrkmql&dl=1", //Must include &dl=1
+                downloadUrl: "https://www.dropbox.com/scl/fi/yj1dp8w9jxpwotr3jacfe/admin_panel.exe?rlkey=60w2jadj1pvzoo74cad71olfw&st=upt8qu5d&dl=1", //Must include &dl=1
                 changelog: [
                     "All Basic Features",
                     "Explore Database",
