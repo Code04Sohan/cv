@@ -1,138 +1,196 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Candidate Database System</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: {} }
+        }
+    </script>
     <style>
-        /* Custom scrollbar for the list view */
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f5f9; 
-            border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #cbd5e1; 
-            border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8; 
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+        
+        /* Modal Transition Classes */
+        .modal-hidden { opacity: 0; pointer-events: none; transform: scale(0.95); }
+        .modal-visible { opacity: 1; pointer-events: auto; transform: scale(1); }
+        .overlay-hidden { opacity: 0; pointer-events: none; }
+        .overlay-visible { opacity: 1; pointer-events: auto; }
+        
+        .id-badge { transition: all 0.3s ease; }
+        .hide-ids .id-badge { display: none; }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 font-sans min-h-screen p-4 md:p-8">
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans min-h-screen transition-colors duration-300 overflow-x-hidden">
 
-    <header class="max-w-6xl mx-auto mb-8">
-        <h1 class="text-2xl md:text-3xl font-extrabold text-center text-indigo-900 tracking-tight">
-            DEMO CANDIDATE DATABASE SYSTEM
-        </h1>
-        <p class="text-center text-sm font-semibold text-indigo-500 mt-1 uppercase tracking-widest">
-            by BAHA Interactive
-        </p>
-    </header>
+    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-50 dark:bg-slate-900 transition-opacity duration-500">
+        <div class="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200 dark:border-slate-700 mx-4">
+            <div class="text-center mb-8">
+                <h1 class="text-2xl font-bold text-indigo-600 dark:text-indigo-400">BAHA Interactive</h1>
+                <p class="text-slate-500 dark:text-slate-400 mt-2">Candidate Database System</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium mb-1">User ID</label>
+                    <input type="text" required placeholder="Any ID" class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Password</label>
+                    <input type="password" required placeholder="Any Password" class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <button type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">Login</button>
+            </form>
+        </div>
+    </div>
 
-    <main class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6">
+    <div id="mainApp" class="hidden min-h-screen flex flex-col">
         
-        <section class="md:col-span-4 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[600px]">
-            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h2 class="font-bold text-slate-700">Candidates</h2>
-                <button onclick="showAddForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                    Add New
+        <nav class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-30">
+            <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-2 cursor-pointer" onclick="showWelcome()">
+                    <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">B</div>
+                    <span class="font-bold text-lg hidden sm:block">BAHA Interactive</span>
+                </div>
+                
+                <button onclick="toggleMenu()" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                 </button>
             </div>
             
-            <div id="candidateList" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 relative">
+            <div id="dropdownMenu" class="absolute right-4 top-16 mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 opacity-0 pointer-events-none transition-opacity z-40">
+                <div class="p-2 space-y-1">
+                    <button onclick="toggleTheme()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                        <span id="themeIcon">🌙</span> <span id="themeText">Dark Mode</span>
+                    </button>
+                    <div class="h-px bg-slate-200 dark:bg-slate-700 my-1"></div>
+                    <button onclick="logout()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center gap-2">
+                        <span>🚪</span> Logout
+                    </button>
                 </div>
-        </section>
+            </div>
+        </nav>
 
-        <section class="md:col-span-8 bg-white rounded-xl shadow-sm border border-slate-200 relative min-h-[600px] overflow-hidden">
+        <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
             
-            <div id="loadingOverlay" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 hidden flex-col items-center justify-center">
-                <div class="animate-spin rounded-full h-12 w-12 border-4 border-indigo-100 border-t-indigo-600 mb-3"></div>
-                <p class="text-sm font-medium text-slate-500">Processing...</p>
+            <div id="welcomeView" class="h-full flex flex-col items-center justify-center py-12 md:py-24">
+                <h2 class="text-3xl md:text-5xl font-extrabold text-center mb-4 tracking-tight">Welcome to the Dashboard</h2>
+                <p class="text-slate-500 dark:text-slate-400 text-center mb-12 max-w-md">Manage your candidate database efficiently. Choose an action below to get started.</p>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-2xl">
+                    <button onclick="showViewer()" class="group flex flex-col items-center p-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 hover:shadow-md transition-all">
+                        <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold">View Students</h3>
+                        <p class="text-sm text-slate-500 mt-2 text-center">Search, filter, and view detailed profiles.</p>
+                    </button>
+                    
+                    <button onclick="openModal('addModal')" class="group flex flex-col items-center p-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-green-500 dark:hover:border-green-400 hover:shadow-md transition-all">
+                        <div class="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold">Add Student</h3>
+                        <p class="text-sm text-slate-500 mt-2 text-center">Register a new candidate into the system.</p>
+                    </button>
+                </div>
             </div>
 
-            <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
-                <svg class="w-16 h-16 text-slate-200 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                <h3 class="text-lg font-medium text-slate-600">Select a candidate</h3>
-                <p class="text-sm text-slate-400 mt-1">Click on a candidate from the list to view their full details.</p>
-            </div>
-
-            <div id="detailsView" class="hidden h-full overflow-y-auto custom-scrollbar p-6 md:p-8">
+            <div id="viewerView" class="hidden flex-col h-[calc(100vh-8rem)]">
+                <div class="flex flex-col sm:flex-row gap-4 mb-6 items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                    <div class="flex w-full sm:w-auto items-center gap-3">
+                        <button onclick="showWelcome()" class="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        </button>
+                        <div class="relative flex-1 sm:w-64">
+                            <input type="text" id="searchInput" placeholder="Search by name..." class="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                            <svg class="w-5 h-5 absolute left-3 top-2.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+                        <span class="text-sm font-medium">Show IDs</span>
+                        <button id="idToggle" onclick="toggleIds()" class="w-12 h-6 rounded-full bg-indigo-600 relative transition-colors duration-300">
+                            <div id="idToggleKnob" class="w-4 h-4 bg-white rounded-full absolute top-1 right-1 transition-transform duration-300"></div>
+                        </button>
+                    </div>
                 </div>
 
-            <div id="addFormView" class="hidden h-full overflow-y-auto custom-scrollbar p-6 md:p-8">
-                <h2 class="text-2xl font-bold text-slate-800 mb-6 border-b pb-4">Add New Candidate</h2>
-                <form id="candidateForm" class="space-y-6" onsubmit="handleFormSubmit(event)">
-                    
+                <div id="studentList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto custom-scrollbar pb-4">
+                    </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 overlay-hidden transition-opacity duration-300 flex items-center justify-center p-4">
+        
+        <div id="addModal" class="modal-hidden bg-white dark:bg-slate-800 w-full max-w-3xl rounded-2xl shadow-2xl max-h-[90vh] flex flex-col transition-all duration-300 absolute">
+            <div class="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold">New Candidate Form</h2>
+                <button onclick="closeModal('addModal')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-1">
+                <form id="addForm" onsubmit="submitForm(event)" class="space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                                <input type="text" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Date of Birth</label>
-                                <input type="date" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Contact Number</label>
-                                <input type="tel" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all">
-                            </div>
+                        <div>
+                            <label class="block text-sm mb-1">Full Name</label>
+                            <input type="text" required class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent outline-none">
                         </div>
-
-                        <div class="h-full">
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Full Address</label>
-                            <textarea required class="w-full h-[calc(100%-28px)] px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-none"></textarea>
+                        <div>
+                            <label class="block text-sm mb-1">Date of Birth</label>
+                            <input type="date" required class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent outline-none [color-scheme:light] dark:[color-scheme:dark]">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-1">Contact Number</label>
+                            <input type="tel" required class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-1">Age</label>
+                            <input type="number" required class="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent outline-none">
                         </div>
                     </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200 dark:border-slate-700">
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Profile Picture (Image)</label>
-                            <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-lg hover:border-indigo-400 transition-colors bg-slate-50">
-                                <div class="space-y-1 text-center">
-                                    <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                                    <div class="flex text-sm text-slate-600 justify-center">
-                                        <label class="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
-                                            <span>Upload a file</span>
-                                            <input type="file" accept="image/*" class="sr-only">
-                                        </label>
-                                    </div>
-                                    <p class="text-xs text-slate-500">PNG, JPG up to 5MB</p>
-                                </div>
-                            </div>
+                            <label class="block text-sm mb-2">Profile Picture</label>
+                            <input type="file" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/30 dark:file:text-indigo-400">
                         </div>
-
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-2">Signature / Document (PDF/Image)</label>
-                            <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-lg hover:border-indigo-400 transition-colors bg-slate-50">
-                                <div class="space-y-1 text-center">
-                                    <svg class="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                    <div class="flex text-sm text-slate-600 justify-center">
-                                        <label class="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
-                                            <span>Upload a document</span>
-                                            <input type="file" accept=".pdf,image/*" class="sr-only">
-                                        </label>
-                                    </div>
-                                    <p class="text-xs text-slate-500">PDF, PNG, JPG</p>
-                                </div>
-                            </div>
+                            <label class="block text-sm mb-2">Document / Signature</label>
+                            <input type="file" accept=".pdf,image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 dark:file:bg-slate-700 dark:file:text-slate-300">
                         </div>
                     </div>
-
-                    <div class="flex justify-end pt-4">
-                        <button type="button" onclick="showEmptyState()" class="bg-white py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50 mr-3">Cancel</button>
-                        <button type="submit" class="bg-indigo-600 py-2 px-6 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Save Candidate</button>
+                    <div class="flex justify-end gap-3 mt-6">
+                        <button type="button" onclick="closeModal('addModal')" class="px-4 py-2 rounded-lg font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors">Cancel</button>
+                        <button type="submit" class="px-6 py-2 rounded-lg font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">Submit Data</button>
                     </div>
                 </form>
             </div>
-        </section>
-    </main>
+        </div>
+
+        <div id="detailsModal" class="modal-hidden bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col transition-all duration-300 absolute">
+            </div>
+
+        <div id="loadingModal" class="modal-hidden bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center absolute transition-all duration-300">
+            <div class="animate-spin rounded-full h-16 w-16 border-4 border-indigo-100 border-t-indigo-600 dark:border-slate-600 dark:border-t-indigo-400 mb-4"></div>
+            <h3 class="text-lg font-bold">Saving to Database...</h3>
+            <p class="text-sm text-slate-500">Please wait</p>
+        </div>
+
+        <div id="successModal" class="modal-hidden bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center absolute transition-all duration-300">
+            <div class="w-16 h-16 bg-green-100 dark:bg-green-900/30 text-green-500 rounded-full flex items-center justify-center mb-4">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold mb-1">Successfully Added!</h3>
+            <p class="text-sm text-slate-500 mb-6">Candidate data uploaded.</p>
+            <button onclick="closeModal('successModal')" class="w-full px-6 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors">Done</button>
+        </div>
+
+    </div>
 
     <script src="app.js"></script>
 </body>
