@@ -145,29 +145,29 @@ function openDetails(id) {
     const modal = document.getElementById('detailsModal');
     
     modal.innerHTML = `
-        <div class="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-start">
-            <div class="flex items-center gap-4">
-                <img src="${c.photoUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-indigo-100">
+        <div class="bg-gradient-to-r from-indigo-600 to-blue-700 p-8 flex justify-between items-start text-white">
+            <div class="flex items-center gap-5">
+                <img src="${c.photoUrl}" class="w-20 h-20 rounded-full object-cover border-4 border-white/20 shadow-xl">
                 <div>
-                    <h2 class="text-2xl font-bold">${c.name}</h2>
-                    <span class="font-mono text-sm text-indigo-600 dark:text-indigo-400">${c.id}</span>
+                    <h2 class="text-3xl font-extrabold tracking-tight">${c.name}</h2>
+                    <span class="inline-block mt-1 font-mono text-sm bg-black/20 px-2 py-0.5 rounded backdrop-blur-sm border border-white/10">${c.id}</span>
                 </div>
             </div>
-            <button onclick="closeModal('detailsModal')" class="text-slate-400 hover:text-slate-800 dark:hover:text-white"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            <button onclick="closeModal('detailsModal')" class="p-2 bg-black/10 hover:bg-black/20 rounded-lg transition-colors"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
         </div>
-        <div class="p-6 space-y-4">
+        <div class="p-8 space-y-6">
             <div class="grid grid-cols-2 gap-4">
-                <div class="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg">
-                    <p class="text-xs text-slate-500 uppercase">Age</p>
-                    <p class="font-medium">${c.age} Years</p>
+                <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Age</p>
+                    <p class="font-semibold text-lg">${c.age} Years</p>
                 </div>
-                <div class="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg">
-                    <p class="text-xs text-slate-500 uppercase">Date of Birth</p>
-                    <p class="font-medium">${c.dob}</p>
+                <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Date of Birth</p>
+                    <p class="font-semibold text-lg">${c.dob}</p>
                 </div>
-                <div class="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg col-span-2">
-                    <p class="text-xs text-slate-500 uppercase">Contact</p>
-                    <p class="font-medium">${c.contact}</p>
+                <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-slate-700 col-span-2">
+                    <p class="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Primary Contact</p>
+                    <p class="font-semibold text-lg">${c.contact}</p>
                 </div>
             </div>
         </div>
