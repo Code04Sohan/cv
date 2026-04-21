@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard Demo</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { brand: '#b30000' } } } }
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-800 antialiased font-sans">
+    
+    <header class="bg-gray-900 text-white py-6 px-6 shadow-md flex justify-between items-center">
+        <h1 class="text-2xl font-bold tracking-wide">Demo Admin</h1>
+        <span class="text-sm bg-green-500 text-white px-3 py-1 rounded-full font-semibold">System Online</span>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div class="lg:col-span-1 space-y-8">
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Add New Product</h2>
+                <form id="add-product-form" class="flex flex-col gap-4">
+                    <input type="text" id="prod-name" placeholder="Product Name" required class="p-2 border rounded focus:ring-2 focus:ring-brand outline-none">
+                    <textarea id="prod-desc" placeholder="Description" rows="2" required class="p-2 border rounded focus:ring-2 focus:ring-brand outline-none"></textarea>
+                    <div class="flex gap-4">
+                        <input type="number" id="prod-price" placeholder="Price (₹)" required class="w-1/2 p-2 border rounded focus:ring-2 focus:ring-brand outline-none">
+                        <input type="number" id="prod-stock" placeholder="Stock" required class="w-1/2 p-2 border rounded focus:ring-2 focus:ring-brand outline-none">
+                    </div>
+                    <input type="url" id="prod-img" placeholder="Image URL (Optional)" class="p-2 border rounded focus:ring-2 focus:ring-brand outline-none">
+                    <button type="submit" class="bg-gray-900 hover:bg-black text-white font-bold py-3 rounded transition shadow">Add to Catalog</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="lg:col-span-2 space-y-8">
+            
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2 flex justify-between items-center">
+                    Recent Orders 
+                    <button onclick="loadOrders()" class="text-sm bg-blue-50 text-blue-600 px-3 py-1 rounded hover:bg-blue-100 transition">↻ Refresh</button>
+                </h2>
+                <div id="orders-list" class="space-y-4 max-h-96 overflow-y-auto pr-2">
+                    <p class="text-gray-500 animate-pulse">Loading orders...</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">Manage Inventory</h2>
+                <div id="admin-product-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto pr-2">
+                    <p class="text-gray-500">Loading inventory...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <audio id="notification-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+    <div id="toast" style="display:none;" class="fixed bottom-10 right-10 bg-green-600 text-white px-6 py-4 rounded-lg shadow-2xl z-50 flex items-center gap-3">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+        <div>
+            <h4 class="font-bold">New Order Received!</h4>
+            <p class="text-sm text-green-100">Check your dashboard to process.</p>
+        </div>
+    </div>
+
+    <div id="edit-modal" style="display:none;" class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden modal-enter">
+            <div class="bg-gray-900 px-6 py-4 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Edit Product</h3>
+                <button onclick="closeEditModal()" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <form id="edit-product-form" class="p-6 flex flex-col gap-4">
+                <input type="hidden" id="edit-id">
+                
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Name</label>
+                    <input type="text" id="edit-name" required class="w-full p-2 bg-gray-50 border border-gray-200 rounded focus:ring-2 focus:ring-brand outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+                    <input type="text" id="edit-desc" required class="w-full p-2 bg-gray-50 border border-gray-200 rounded focus:ring-2 focus:ring-brand outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Price (₹)</label>
+                        <input type="number" id="edit-price" required class="w-full p-2 bg-gray-50 border border-gray-200 rounded focus:ring-2 focus:ring-brand outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Stock</label>
+                        <input type="number" id="edit-stock" required class="w-full p-2 bg-gray-50 border border-gray-200 rounded focus:ring-2 focus:ring-brand outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Image URL</label>
+                    <input type="text" id="edit-img" class="w-full p-2 bg-gray-50 border border-gray-200 rounded focus:ring-2 focus:ring-brand outline-none">
+                </div>
+                
+                <div class="flex gap-3 mt-4">
+                    <button type="submit" class="flex-1 bg-brand hover:bg-brandDark text-white font-bold py-3 rounded transition shadow">Save</button>
+                    <button type="button" onclick="closeEditModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded transition">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="admin.js"></script>
+    
+    <script>
+        // Override Toast Trigger in HTML to use CSS Animation class
+        function triggerNotification() {
+            document.getElementById('notification-sound').play().catch(e => console.log("Audio play blocked"));
+            const toast = document.getElementById('toast');
+            toast.style.display = 'flex';
+            toast.classList.remove('toast-exit');
+            toast.classList.add('toast-enter');
+            
+            setTimeout(() => { 
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-exit');
+                setTimeout(() => { toast.style.display = 'none'; }, 300); // wait for animation to end
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
