@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Babla Yoga Training Center | Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { 
+                extend: {
+                    colors: {
+                        brand: { 50: '#f0fdfa', 100: '#ccfbf1', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e' , 800: "#ffffff" }
+                    }
+                } 
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+        .modal-hidden { opacity: 0; pointer-events: none; transform: scale(0.95); }
+        .modal-visible { opacity: 1; pointer-events: auto; transform: scale(1); }
+        .overlay-hidden { opacity: 0; pointer-events: none; }
+        .overlay-visible { opacity: 1; pointer-events: auto; }
+        
+        /* Toast Animation */
+        @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .toast-enter { animation: slideInUp 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans min-h-screen transition-colors duration-300 overflow-x-hidden">
+
+    <div id="toastContainer" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+
+    <div id="loginScreen" class="fixed inset-0 z-50 flex bg-white dark:bg-slate-900 transition-opacity duration-500">
+        <div class="w-full md:w-1/2 flex flex-col p-6 sm:p-10 relative h-full overflow-y-auto custom-scrollbar">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 mb-10">
+                <img id="brandLogo" src="" alt="Academy Logo" class="h-14 w-14 rounded-full object-cover shrink-0 shadow-sm border border-slate-100 dark:border-slate-800">
+                <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white uppercase leading-tight">
+                    Babla Yoga<br><span class="text-brand-600 text-lg sm:text-xl">Training Center</span>
+                </h1>
+            </div>
+
+            <div class="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full my-auto">
+                <h2 class="text-3xl font-bold mb-8 text-center md:text-left text-slate-800 dark:text-white">Log in</h2>
+                
+                <form onsubmit="handleLogin(event)" class="space-y-5">
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-600 transition-colors">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        </div>
+                        <input type="text" placeholder="Email / Username *" required value="demo-admin" class="w-full pl-10 pr-4 py-3.5 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder-slate-400 text-sm font-medium">
+                    </div>
+
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-600 transition-colors">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                        </div>
+                        <input type="password" id="passwordInput" placeholder="Password *" required value="demo123" class="w-full pl-10 pr-12 py-3.5 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-brand-500 outline-none transition-all placeholder-slate-400 text-sm font-medium">
+                        <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                            <svg id="eyeIcon" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="pt-2 space-y-3">
+                        <button id="loginBtn" type="submit" class="relative w-full py-3.5 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-bold transition-all transform active:scale-[0.98] shadow-sm flex items-center justify-center">
+                            <span id="loginBtnText">Log In</span>
+                            <svg id="loginBtnSpinner" class="hidden animate-spin h-5 w-5 text-white absolute" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        </button>
+                        <button type="button" onclick="window.open('https://code04sohan.github.io/cv', '_blank')" class="w-full py-3.5 border-2 border-brand-500 text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-md font-bold transition-all transform active:scale-[0.98]">Contact Developer</button>
+                    </div>
+                </form>
+                <p class="text-center text-xs text-slate-400 mt-8 uppercase tracking-widest">Powered by BAHA Interactive</p>
+            </div>
+        </div>
+
+        <div class="hidden md:block md:w-1/2 relative bg-slate-100 overflow-hidden">
+            <img id="brandCover" src="" alt="Cover" class="absolute inset-0 w-full h-full object-cover transform scale-105 hover:scale-100 transition-transform duration-[10s] ease-out">
+            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-white/90 dark:to-slate-900/90"></div> 
+            
+            <div class="absolute right-12 lg:right-24 top-1/2 -translate-y-1/2 flex flex-col gap-6 text-right">
+                <span class="text-4xl lg:text-5xl font-light text-brand-800 dark:text-brand-400 tracking-[0.2em] uppercase drop-shadow-sm opacity-0 animate-[fadeInRight_1s_ease-out_0.2s_forwards] translate-x-8">Learn</span>
+                <span class="text-4xl lg:text-5xl font-light text-brand-800 dark:text-brand-400 tracking-[0.2em] uppercase drop-shadow-sm opacity-0 animate-[fadeInRight_1s_ease-out_0.4s_forwards] translate-x-8">Practice</span>
+                <span class="text-4xl lg:text-5xl font-light text-brand-800 dark:text-brand-400 tracking-[0.2em] uppercase drop-shadow-sm opacity-0 animate-[fadeInRight_1s_ease-out_0.6s_forwards] translate-x-8">Certify</span>
+                <span class="text-4xl lg:text-5xl font-light text-brand-800 dark:text-brand-400 tracking-[0.2em] uppercase drop-shadow-sm opacity-0 animate-[fadeInRight_1s_ease-out_0.8s_forwards] translate-x-8">Advance</span>
+            </div>
+            <style>@keyframes fadeInRight { to { opacity: 1; transform: translateX(0); } }</style>
+        </div>
+    </div>
+
+    <div id="mainApp" class="hidden min-h-screen flex flex-col">
+        <nav class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3 cursor-pointer" onclick="showWelcome()">
+                    <img id="navLogo" src="" class="h-8 w-8 rounded-full object-cover border border-slate-200 dark:border-slate-600">
+                    <span class="font-bold text-lg hidden sm:block tracking-tight text-slate-800 dark:text-white">Babla Yoga Training Center</span>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <div class="relative w-48 sm:w-64 hidden md:block">
+                        <select id="sheetSelector" onchange="fetchDatabaseData(this.value)" class="w-full pl-3 pr-10 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-brand-500 outline-none appearance-none transition-all font-semibold text-sm">
+                            <option value="Main Recoreds">Master: Main Records</option>
+                        </select>
+                        <div class="absolute right-3 top-2.5 pointer-events-none text-slate-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+
+                    <div class="hidden sm:flex items-center gap-2">
+                        <button onclick="toggleTheme()" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none" title="Toggle Dark Mode">
+                            <svg id="themeIconNav" class="w-5 h-5 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                            </svg>
+                        </button>
+                        <button onclick="logout()" class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors font-medium text-sm">Logout</button>
+                    </div>
+
+                    <div class="relative sm:hidden">
+                        <button onclick="document.getElementById('mobileMenu').classList.toggle('hidden')" class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium text-sm transition-colors">
+                            Options <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        </button>
+                        <div id="mobileMenu" class="hidden absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 flex-col py-2 z-50">
+                            <button onclick="toggleTheme(); document.getElementById('mobileMenu').classList.add('hidden')" class="text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 w-full flex items-center gap-2 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg> Toggle Theme</button>
+                            <div class="h-px bg-slate-200 dark:bg-slate-700 my-1"></div>
+                            <button onclick="logout(); document.getElementById('mobileMenu').classList.add('hidden')" class="text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 w-full flex items-center gap-2 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg> Logout</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+            <div id="welcomeView" class="h-full flex flex-col items-center justify-center py-6 md:py-16">
+                <h2 class="text-2xl md:text-5xl font-extrabold text-center mb-4 tracking-tight">System Dashboard</h2>
+                <p class="text-slate-500 dark:text-slate-400 text-center mb-8 max-w-md">Select an action below to manage your student database.</p>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-5xl">
+                    <button onclick="showViewer()" class="group p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-brand-500 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
+                        <div class="w-12 h-12 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold">Candidate Directory</h3>
+                        <p class="text-sm text-slate-500 mt-2">Search, view, and manage student profiles.</p>
+                    </button>
+                    <button onclick="openModal('addModal')" class="group p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-green-500 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
+                        <div class="w-12 h-12 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold">Post New Record</h3>
+                        <p class="text-sm text-slate-500 mt-2">Upload profile pictures, documents, and data.</p>
+                    </button>
+                    <button onclick="openModal('createSheetModal')" class="group p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:shadow-xl transition-all duration-300 flex flex-col items-center text-center">
+                        <div class="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-bold">Create New Batch</h3>
+                        <p class="text-sm text-slate-500 mt-2">Segregate data by creating a new database tab.</p>
+                    </button>
+                </div>
+            </div>
+
+            <div id="viewerView" class="hidden flex-col">
+                <div class="flex flex-col md:flex-row gap-4 mb-6 items-center justify-between bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                    <div class="flex flex-1 items-center gap-3 w-full md:w-auto">
+                        <button onclick="showWelcome()" class="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg></button>
+                        
+                        <select id="searchType" onchange="renderList(document.getElementById('searchInput').value)" class="pl-2 pr-6 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium">
+                            <option value="both">All</option>
+                            <option value="name">Name</option>
+                            <option value="id">ID</option>
+                        </select>
+
+                        <div class="relative flex-1">
+                            <input type="text" id="searchInput" placeholder="Search..." class="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-brand-500 outline-none">
+                            <svg class="w-4 h-4 absolute left-3 top-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+                        <button onclick="fetchDatabaseData(document.getElementById('sheetSelector').value)" class="p-2 text-brand-600 dark:text-brand-400 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-900/30 transition-colors" title="Refresh"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg></button>
+                        
+                        <div class="flex bg-slate-100 dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+                            <button id="btnGrid" onclick="setViewMode('grid')" class="p-1.5 rounded-md bg-white dark:bg-slate-700 shadow-sm text-brand-600 dark:text-brand-400"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg></button>
+                            <button id="btnList" onclick="setViewMode('list')" class="p-1.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="apiLoadingIndicator" class="hidden flex-col items-center justify-center py-12">
+                    <div class="animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-brand-600 mb-4"></div>
+                    <p class="text-slate-500 font-medium">Fetching Data from Cloud...</p>
+                </div>
+
+                <div id="studentList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pb-8"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 overlay-hidden transition-opacity duration-300 flex items-center justify-center p-4">
+        
+        <div id="createSheetModal" class="modal-hidden bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 flex flex-col absolute transition-all duration-300">
+            <h3 class="text-xl font-bold mb-2">Create New Batch Database</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">Enter a unique name for the new batch to segregate student data.</p>
+            <input type="text" id="newSheetName" placeholder="e.g., Morning_Yoga_2026" class="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 outline-none focus:ring-2 focus:ring-brand-500 mb-6">
+            <div class="flex gap-3">
+                <button onclick="closeModal('createSheetModal')" class="flex-1 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 font-medium">Cancel</button>
+                <button onclick="handleCreateSheet()" class="flex-1 py-2 rounded-lg bg-brand-600 text-white font-bold hover:bg-brand-700 transition-colors">Create Batch</button>
+            </div>
+        </div>
+
+        <div id="addModal" class="modal-hidden bg-white dark:bg-slate-800 w-full max-w-4xl rounded-2xl shadow-2xl max-h-[95vh] flex flex-col absolute transition-all duration-300 overflow-hidden">
+             <div class="bg-slate-50 dark:bg-slate-900/50 p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shrink-0">
+                 <div>
+                     <h2 class="text-xl font-bold text-slate-800 dark:text-white">New Candidate Registration</h2>
+                     <p class="text-xs text-brand-600 dark:text-brand-400 mt-1">Files will be encoded and securely uploaded to Google Drive.</p>
+                 </div>
+                 <button onclick="closeModal('addModal')" class="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-400"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+             </div>
+             
+             <div class="p-6 overflow-y-auto custom-scrollbar">
+                 <form id="addForm" onsubmit="submitForm(event)" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div><label class="block text-sm font-semibold mb-1">Roll No / ID *</label><input type="text" id="formId" required placeholder="" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none"></div>
+                        <div><label class="block text-sm font-semibold mb-1">Full Name *</label><input type="text" id="formName" required placeholder="" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none"></div>
+                        <div><label class="block text-sm font-semibold mb-1">Date of Birth *</label><input type="date" id="formDob" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none [color-scheme:light] dark:[color-scheme:dark]"></div>
+                        <div><label class="block text-sm font-semibold mb-1">Calculated Age</label><input type="number" id="formAge" placeholder="Auto-fills from DOB" class="w-full px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 outline-none" readonly></div>
+                        <div><label class="block text-sm font-semibold mb-1">Contact Number *</label><input type="tel" id="formContact" required placeholder="+91..." class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none"></div>
+                        <div><label class="block text-sm font-semibold mb-1">Guardian Name *</label><input type="text" id="formGuardian" required placeholder="Parent/Guardian Name" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none"></div>
+                        <div class="md:col-span-2"><label class="block text-sm font-semibold mb-1">Full Address *</label><input type="text" id="formAddress" required placeholder="Complete residential address" class="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none"></div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <div class="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group relative">
+                            <div class="mx-auto w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-500 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>
+                            <h4 class="font-bold text-sm mb-1">Profile Photo (DP)</h4>
+                            <p class="text-xs text-slate-500 mb-3">JPG, PNG up to 2MB</p>
+                            <input type="file" id="formPhoto" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <span class="inline-block px-4 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-xs font-semibold shadow-sm group-hover:border-indigo-400 pointer-events-none">Select Image</span>
+                        </div>
+                        
+                        <div class="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group relative">
+                            <div class="mx-auto w-12 h-12 bg-rose-100 dark:bg-rose-900/30 text-rose-500 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></div>
+                            <h4 class="font-bold text-sm mb-1">Verification Document</h4>
+                            <p class="text-xs text-slate-500 mb-3">PDF or Image up to 5MB</p>
+                            <input type="file" id="formDoc" accept=".pdf,image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <span class="inline-block px-4 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-xs font-semibold shadow-sm group-hover:border-rose-400 pointer-events-none">Select File</span>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-3 pt-6 mt-4 border-t border-slate-100 dark:border-slate-800">
+                        <button type="button" onclick="closeModal('addModal')" class="px-6 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                        <button type="submit" class="px-8 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-bold shadow-md transition-colors">Submit to Database</button>
+                    </div>
+                 </form>
+             </div>
+        </div>
+
+        <div id="detailsModal" class="modal-hidden bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col absolute transition-all duration-300 overflow-hidden"></div>
+        <div id="loadingModal" class="modal-hidden bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center absolute border border-slate-100 dark:border-slate-700"><div class="animate-spin rounded-full h-12 w-12 border-4 border-slate-100 border-t-brand-600 dark:border-slate-700 dark:border-t-brand-500 mb-4"></div><h3 class="font-bold text-lg">Communicating with Cloud...</h3></div>
+        <div id="successModal" class="modal-hidden bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center absolute text-center border border-slate-100 dark:border-slate-700 max-w-sm"><div class="w-16 h-16 bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded-full flex items-center justify-center mb-4"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg></div><h3 class="text-2xl font-bold mb-2">Success!</h3><p class="text-slate-500 dark:text-slate-400 text-sm mb-6">Record securely saved to Google Workspace.</p><button onclick="closeModal('successModal')" class="w-full px-6 py-3 bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold rounded-lg transition-transform active:scale-95">Done</button></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
