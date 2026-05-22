@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERP | Babla Yoga Training Center</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { 
+                extend: {
+                    colors: {
+                        brand: { 50: '#f0fdfa', 100: '#ccfbf1', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a' }
+                    }
+                } 
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for production polish */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        
+        /* Modal Transitions */
+        .modal-hidden { opacity: 0; pointer-events: none; transform: scale(0.95); }
+        .modal-visible { opacity: 1; pointer-events: auto; transform: scale(1); }
+        .overlay-hidden { opacity: 0; pointer-events: none; }
+        .overlay-visible { opacity: 1; pointer-events: auto; }
+        
+        /* Smooth UI entry */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans min-h-screen transition-colors duration-300 overflow-hidden">
+
+    <div id="toastContainer" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+
+    <div id="loginView" class="flex h-screen w-full bg-white dark:bg-slate-900 relative z-50 transition-opacity duration-500">
+        
+        <div class="w-full lg:w-1/2 flex flex-col justify-between p-8 sm:p-12 relative overflow-y-auto">
+            
+            <div class="flex items-center gap-4 animate-fade-in">
+                <img id="loginBrandLogo" src="" alt="Logo" class="w-16 h-16 rounded-full object-cover border-2 border-brand-500 shadow-sm hidden">
+                <div id="loginBrandFallback" class="w-16 h-16 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold text-xl shadow-sm">BY</div>
+                <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white uppercase leading-tight">
+                    Babla Yoga<br><span class="text-brand-600 text-xl">Training Center</span>
+                </h1>
+            </div>
+
+            <div class="flex-1 flex flex-col justify-center max-w-md w-full mx-auto animate-fade-in" style="animation-delay: 0.1s;">
+                <div class="mb-8">
+                    <h2 class="text-3xl font-bold text-slate-800 dark:text-white mb-2">ERP System</h2>
+                    <p class="text-slate-500 dark:text-slate-400 font-medium">Login to Dashboard</p>
+                </div>
+
+                <form id="authForm" class="space-y-6">
+                    <div class="space-y-2">
+                        <label class="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Password</label>
+                        <input type="password" id="passwordInput" placeholder="••••••••••••" required class="w-full px-5 py-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-brand-500 outline-none transition-all font-medium text-lg">
+                    </div>
+
+                    <button id="loginBtn" type="submit" class="w-full py-4 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-lg transition-all transform active:scale-[0.98] shadow-lg flex items-center justify-center gap-2">
+                        <span id="loginBtnText">Login</span>
+                        <svg id="loginBtnSpinner" class="animate-spin h-5 w-5 hidden text-white" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    </button>
+                </form>
+
+                <div class="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm font-bold">
+                    <button onclick="window.AuthModule.initiatePasswordReset()" class="text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+                        Forgot Password?
+                    </button>
+                    
+                    <a id="devContactLink" href="mailto:sohanadhikari04@gmail.com?subject=Babla Yoga Portal Support" class="text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        Contact Developer
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-8 text-center text-xs font-semibold text-slate-400 tracking-wide animate-fade-in" style="animation-delay: 0.2s;">
+                System Engineered by <span class="text-slate-600 dark:text-slate-300">Sohan Adhikari</span> | BAHA Interactive
+            </div>
+        </div>
+
+        <div class="hidden lg:block lg:w-1/2 relative bg-slate-100 dark:bg-slate-800 overflow-hidden shadow-inner">
+            <img id="loginBgImage" src="" alt="Background" class="absolute inset-0 w-full h-full object-cover object-center opacity-0 transition-opacity duration-1000">
+            
+        </div>
+    </div>
+
+    <div id="appView" class="hidden h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
+        
+        <nav class="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 sm:px-6 shrink-0 z-30">
+            <div class="flex items-center gap-3">
+                <img id="navBrandLogo" src="" alt="Logo" class="w-9 h-9 rounded-full object-cover border border-slate-200 hidden">
+                <div id="navBrandFallback" class="h-9 w-9 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold text-xs shadow-sm">BY</div>
+                <span class="font-extrabold text-lg tracking-tight hidden sm:block text-slate-800 dark:text-white uppercase">Babla Yoga <span class="text-brand-600">Training Center</span></span>
+            </div>
+            
+            <div class="flex items-center gap-2 sm:gap-4">
+                <button onclick="window.AppCore.toggleTheme()" class="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                </button>
+                <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+                <button onclick="window.AuthModule.logout()" class="flex items-center gap-2 px-3 py-2 rounded-xl text-rose-600 dark:text-rose-400 font-bold text-sm hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors">
+                    <svg class="w-4 h-4 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                    Logout
+                </button>
+            </div>
+        </nav>
+
+        <div class="flex flex-1 overflow-hidden">
+            
+            <aside class="w-16 sm:w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col py-4 shrink-0 overflow-y-auto">
+                <div class="px-2 sm:px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:block">Modules</div>
+                <ul id="sidebarNav" class="space-y-1 px-2 sm:px-3">
+                    </ul>
+            </aside>
+
+            <main id="moduleContainer" class="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-50 dark:bg-slate-900 relative">
+                </main>
+        </div>
+    </div>
+
+    <div id="globalOverlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] overlay-hidden transition-all duration-300 flex items-center justify-center p-4">
+        
+        <div id="otpRequestModal" class="modal-hidden bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl shadow-2xl p-8 flex flex-col text-center border border-slate-100 dark:border-slate-700 transition-all duration-300">
+            <div class="w-16 h-16 bg-brand-50 dark:bg-slate-700 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <h3 class="text-xl font-bold mb-2">Forgot Password</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">Request a OTP token to reset your password.</p>
+            <button onclick="window.AuthModule.dispatchOtp()" class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold transition-colors">Send OTP</button>
+            <button onclick="window.UIUtils.closeModal('otpRequestModal')" class="mt-4 text-sm font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">Cancel</button>
+        </div>
+
+        <div id="otpVerifyModal" class="modal-hidden bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl shadow-2xl p-8 flex flex-col border border-slate-100 dark:border-slate-700 transition-all duration-300">
+            <h3 class="text-xl font-bold mb-6 text-center">Verify Identity</h3>
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">6-Digit OTP</label>
+            <input type="text" id="otpCodeInput" placeholder="000000" maxlength="6" class="w-full text-center text-2xl tracking-[0.5em] py-3 mb-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+            
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">New Password</label>
+            <input type="password" id="newPasswordInput" placeholder="Enter new key" class="w-full px-4 py-3 mb-8 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 outline-none focus:ring-2 focus:ring-brand-500 font-medium">
+            
+            <button onclick="window.AuthModule.confirmReset()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors">Apply</button>
+            <button onclick="window.UIUtils.closeModal('otpVerifyModal')" class="mt-4 text-sm font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-center">Cancel</button>
+        </div>
+
+        <div id="globalLoadingModal" class="modal-hidden bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col items-center justify-center border border-slate-100 dark:border-slate-700 min-w-[200px]">
+            <svg class="animate-spin h-10 w-10 text-brand-500 mb-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <span class="text-sm font-bold text-slate-700 dark:text-slate-200 tracking-wider">LOADING...</span>
+        </div>
+    </div>
+
+    <script>
+        // Silent error tracking for production environments
+        window.addEventListener('error', function(event) {
+            console.debug('[Core Guard] Suppressed Error:', event.message);
+            // In a real prod environment, you could send this to Sentry/LogRocket here.
+        });
+    </script>
+    <script src="scripts/config.js"></script>
+    <script src="scripts/utils.js"></script>
+    <script src="scripts/login.js"></script>
+    <script src="scripts/app.js"></script>
+</body>
+</html>
