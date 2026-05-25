@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOHAN ADHIKARI DATABASE VIEW | Secure Records</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: { 
+                extend: { colors: { brand: { 500: '#0d9488', 600: '#0f766e' } } }
+            }
+        }
+    </script>
+    
+    <style>
+        /* Sleek custom scrollbars for the data table */
+        .table-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .table-scroll::-webkit-scrollbar-track { background: #f8fafc; border-radius: 4px; }
+        .table-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .table-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Sticky header to keep column names visible while scrolling down */
+        th { position: sticky; top: 0; z-index: 10; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <nav class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-brand-500 rounded-full flex items-center justify-center text-white font-bold tracking-wider shadow-sm">
+                BY
+            </div>
+            <div>
+                <h1 class="font-extrabold text-lg leading-tight uppercase tracking-tight text-slate-800">dev@sohan.adhikari</h1>
+                <p class="text-xs text-slate-500 font-semibold uppercase tracking-widest">Production Batabase(View only Mode)</p>
+            </div>
+        </div>
+        
+        <div class="relative w-full max-w-xs hidden sm:block">
+            <svg class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <input type="text" id="searchInput" placeholder="Search records..." class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-brand-500 outline-none transition-all text-sm font-medium">
+        </div>
+    </nav>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 flex flex-col min-h-0">
+        
+        <div class="flex justify-between items-end mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-slate-800">Candidate Directory</h2>
+                <p class="text-sm text-slate-500 mt-1">Live synchronized database view.</p>
+            </div>
+            <div class="text-sm font-bold text-slate-400 bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm">
+                Total Records: <span id="recordCount" class="text-brand-600">0</span>
+            </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm flex-1 flex flex-col overflow-hidden relative">
+            
+            <div id="loader" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center transition-opacity duration-300">
+                <svg class="animate-spin h-10 w-10 text-brand-500 mb-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <p class="text-sm font-bold text-slate-500 uppercase tracking-widest">Fetching Data Engine...</p>
+            </div>
+
+            <div class="overflow-auto table-scroll flex-1">
+                <table class="w-full text-left border-collapse min-w-max">
+                    <thead id="tableHead" class="bg-slate-50 border-b border-slate-200 shadow-sm">
+                        </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-100 text-sm">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // We modify your pubhtml link to output as a CSV for clean data extraction
+        const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS4ZK8Fwb7eUPDYsmQyBy6FlwjjpB0xKjm-iLG7vAuZICwTJ1P4UAjutVr4cfTQN5EnsSsqhpqaeHnR/pub?gid=0&single=true&output=csv";
+        
+        let globalData = []; // Store data for searching
+
+        document.addEventListener("DOMContentLoaded", () => {
+            fetchData();
+
+            // Bind Search Functionality
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                const filtered = globalData.filter(row => {
+                    return Object.values(row).some(val => String(val).toLowerCase().includes(term));
+                });
+                renderTableBody(filtered);
+            });
+        });
+
+        function fetchData() {
+            Papa.parse(SHEET_CSV_URL, {
+                download: true,
+                header: true,      // Automatically uses the first row as object keys
+                skipEmptyLines: true,
+                complete: function(results) {
+                    globalData = results.data;
+                    
+                    // Hide Loader
+                    document.getElementById('loader').style.opacity = '0';
+                    setTimeout(() => document.getElementById('loader').style.display = 'none', 300);
+                    
+                    // Render UI
+                    if (globalData.length > 0) {
+                        renderTableHead(Object.keys(globalData[0]));
+                        renderTableBody(globalData);
+                    } else {
+                        document.getElementById('tableBody').innerHTML = `<tr><td class="p-8 text-center text-slate-400 font-medium">No records found in database.</td></tr>`;
+                    }
+                },
+                error: function(err) {
+                    console.error("Data Fetch Error:", err);
+                    document.getElementById('loader').innerHTML = `<p class="text-rose-500 font-bold">Failed to connect to data engine.</p>`;
+                }
+            });
+        }
+
+        function renderTableHead(headers) {
+            const thead = document.getElementById('tableHead');
+            let html = '<tr>';
+            headers.forEach((header, index) => {
+                // Ignore empty columns
+                if(header.trim() === "") return; 
+                
+                // Add a slightly darker background to the first column (usually ID)
+                const extraClass = index === 0 ? 'bg-slate-100 pl-6' : 'px-4';
+                html += `<th class="py-3 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap bg-slate-50 ${extraClass}">${header}</th>`;
+            });
+            html += '</tr>';
+            thead.innerHTML = html;
+        }
+
+        function renderTableBody(dataArray) {
+            const tbody = document.getElementById('tableBody');
+            document.getElementById('recordCount').innerText = dataArray.length;
+            
+            let html = '';
+            dataArray.forEach((row, rowIndex) => {
+                // Subtle zebra striping
+                const bgClass = rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+                html += `<tr class="${bgClass} hover:bg-brand-50 transition-colors cursor-default">`;
+                
+                Object.values(row).forEach((cellValue, colIndex) => {
+                    // Ignore empty columns mapping to empty headers
+                    if(Object.keys(row)[colIndex].trim() === "") return;
+
+                    const extraClass = colIndex === 0 ? 'font-semibold text-slate-800 pl-6' : 'text-slate-600 px-4';
+                    
+                    // Check if the cell is a URL (like a photo or document link)
+                    let displayValue = cellValue;
+                    if (typeof cellValue === 'string' && cellValue.startsWith('http')) {
+                        displayValue = `<a href="${cellValue}" target="_blank" class="text-brand-600 hover:text-brand-800 hover:underline flex items-center gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg> View File</a>`;
+                    }
+
+                    html += `<td class="py-3 whitespace-nowrap ${extraClass}">${displayValue}</td>`;
+                });
+                html += '</tr>';
+            });
+            tbody.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
