@@ -5,7 +5,7 @@
  * The landing page for the application. Completely schema-agnostic.
  */
 
-window.WelcomeModule = (function() {
+window.WelcomeModule = (function () {
     'use strict';
 
     /**
@@ -24,10 +24,10 @@ window.WelcomeModule = (function() {
                 
                 <div class="mb-10">
                     <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-800 dark:text-white mb-2">
-                        ${greeting}, Mr. Babla Tantra
+                        ${greeting}, Mr. Babla Tantra.
                     </h1>
                     <p class="text-slate-500 dark:text-slate-400 font-medium text-lg">
-                        Welcome to official ERP Portal of Babla Yoga Training Center
+                        System operations are online. Please define your data schema architectures to begin.
                     </p>
                 </div>
 

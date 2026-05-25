@@ -5,7 +5,7 @@
  * Handles dynamic module injection, sidebar routing, and global UI states.
  */
 
-window.AppCore = (function() {
+window.AppCore = (function () {
     'use strict';
 
     // Core Configuration
@@ -26,9 +26,15 @@ window.AppCore = (function() {
             scriptFile: 'welcomePage.js',
             namespace: 'WelcomeModule', // The global object the module will expose
             isLoaded: false
+        },
+        {
+            id: 'newCandidate',
+            title: 'Admission Registry',
+            icon: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>`,
+            scriptFile: 'newCandidate.js',
+            namespace: 'NewCandidateModule',
+            isLoaded: false
         }
-        // Future Example:
-        // { id: 'students', title: 'Student Directory', icon: '...', scriptFile: 'studentDirectory.js', namespace: 'StudentModule', isLoaded: false }
     ];
 
     let currentModuleId = null;
@@ -36,11 +42,22 @@ window.AppCore = (function() {
     /**
      * Bootstraps the application after successful login
      */
-    function initializeApp() {
+    async function initializeApp() {
         try {
             applySavedTheme();
             buildSidebarNavigation();
-            
+
+            // Eagerly load newCandidate.js so the background queue starts running immediately
+            const candidateMod = MODULES.find(m => m.id === 'newCandidate');
+            if (candidateMod && !candidateMod.isLoaded) {
+                try {
+                    await loadScript(`${CONFIG.MODULE_DIR}${candidateMod.scriptFile}`);
+                    candidateMod.isLoaded = true;
+                } catch (e) {
+                    console.debug('[AppCore] Suppressed eager load failure of candidate module:', e);
+                }
+            }
+
             // Default route
             if (MODULES.length > 0) {
                 navigateTo(MODULES[0].id);
@@ -62,9 +79,9 @@ window.AppCore = (function() {
         MODULES.forEach(mod => {
             const li = document.createElement('li');
             li.innerHTML = `
-                <button id="nav-btn-${mod.id}" onclick="window.AppCore.navigateTo('${mod.id}')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-brand-600 dark:hover:text-brand-400 transition-all text-sm text-left">
+                <button id="nav-btn-${mod.id}" onclick="window.AppCore.navigateTo('${mod.id}')" class="w-full flex items-center justify-center sm:justify-start gap-3 px-3 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-brand-600 dark:hover:text-brand-400 transition-all text-sm text-left">
                     <span class="shrink-0">${mod.icon}</span>
-                    <span class="truncate">${mod.title}</span>
+                    <span class="truncate hidden sm:block">${mod.title}</span>
                 </button>
             `;
             sidebar.appendChild(li);
@@ -99,7 +116,7 @@ window.AppCore = (function() {
         if (!moduleDef) return;
 
         const container = document.getElementById(CONFIG.CONTAINER_ID);
-        
+
         // Show loading state in container
         container.innerHTML = `
             <div class="h-full w-full flex flex-col items-center justify-center animate-fade-in text-slate-400">
@@ -155,25 +172,37 @@ window.AppCore = (function() {
     /**
      * Theme Management
      */
+    const SUN_SVG = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.364 17.636l-.707.707M6.364 6.364l.707-.707m12.728 12.728l.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z"></path>`;
+    const MOON_SVG = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>`;
+
+    function updateThemeUI(isDark) {
+        const icon = document.getElementById('themeToggleIcon');
+        if (icon) {
+            icon.innerHTML = isDark ? SUN_SVG : MOON_SVG;
+        }
+    }
+
     function toggleTheme() {
         const html = document.documentElement;
         if (html.classList.contains('dark')) {
             html.classList.remove('dark');
             html.classList.add('light');
             localStorage.setItem(CONFIG.THEME_KEY, 'light');
+            updateThemeUI(false);
         } else {
             html.classList.remove('light');
             html.classList.add('dark');
             localStorage.setItem(CONFIG.THEME_KEY, 'dark');
+            updateThemeUI(true);
         }
     }
 
     function applySavedTheme() {
-        // Changed fallback from 'light' to 'dark'
-        const savedTheme = localStorage.getItem(CONFIG.THEME_KEY) || 'dark'; 
+        const savedTheme = localStorage.getItem(CONFIG.THEME_KEY) || 'dark';
         const html = document.documentElement;
         html.classList.remove('light', 'dark');
         html.classList.add(savedTheme);
+        updateThemeUI(savedTheme === 'dark');
     }
 
     // Expose Public Methods

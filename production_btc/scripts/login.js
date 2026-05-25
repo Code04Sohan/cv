@@ -111,10 +111,10 @@ window.AuthModule = (function() {
 
         btn.disabled = isLoading;
         if (isLoading) {
-            text.classList.add('opacity-0');
+            text.classList.add('hidden');
             spinner.classList.remove('hidden');
         } else {
-            text.classList.remove('opacity-0');
+            text.classList.remove('hidden');
             spinner.classList.add('hidden');
         }
     }
