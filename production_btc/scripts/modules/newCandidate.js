@@ -202,6 +202,7 @@ window.NewCandidateModule = (function () {
     // Module internal state for holding base64 media blocks
     const state = {
         studentPhoto: '',
+        studentSignature: '',
         isProcessing: false,
         isInspectorOpen: false,
         isOffline: false
@@ -247,10 +248,10 @@ window.NewCandidateModule = (function () {
     function mount(container) {
         try {
             container.innerHTML = `
-                <div class="max-w-6xl mx-auto h-full flex flex-col animate-fade-in pb-16">
+                <div class="max-w-6xl mx-auto flex flex-col animate-fade-in pb-16">
                     
                     <!-- Recreated Clean Admission Registry Section Header -->
-                    <div class="relative bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-700/80 mb-8 transition-all duration-300 overflow-hidden">
+                    <div class="relative bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-700/80 mb-8 transition-all duration-300 overflow-hidden shrink-0">
                         <!-- Subtle brand background accent glows (premium dark-mode halos) -->
                         <div class="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-brand-500/5 dark:bg-brand-500/10 blur-3xl pointer-events-none"></div>
                         <div class="absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-indigo-500/5 dark:bg-indigo-500/10 blur-3xl pointer-events-none"></div>
@@ -441,26 +442,15 @@ window.NewCandidateModule = (function () {
                                 <h3 class="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-4 flex items-center gap-2">
                                     <span class="w-2 h-2 rounded-full bg-brand-500"></span> Father Profile Block
                                 </h3>
-                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-1.5">
                                         <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Name</label>
-                                        <input type="text" id="field_father_name" required placeholder="Full Name"
-                                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Occupation</label>
-                                        <input type="text" id="field_father_occupation" required placeholder="Occupation"
+                                        <input type="text" id="field_father_name" required placeholder="Full Name" oninput="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                     <div class="space-y-1.5">
                                         <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Mobile</label>
-                                        <input type="tel" id="field_father_mobile" required placeholder="10 Digit Number" maxlength="10"
-                                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Aadhar</label>
-                                        <input type="text" id="field_father_aadhar" required placeholder="0000 0000 0000" maxlength="14"
-                                            oninput="window.NewCandidateModule.formatAadhar(this)"
+                                        <input type="tel" id="field_father_mobile" required placeholder="10 Digit Number" maxlength="10" oninput="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                 </div>
@@ -471,26 +461,44 @@ window.NewCandidateModule = (function () {
                                 <h3 class="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-4 flex items-center gap-2">
                                     <span class="w-2 h-2 rounded-full bg-pink-500"></span> Mother Profile Block
                                 </h3>
-                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-1.5">
                                         <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Name</label>
-                                        <input type="text" id="field_mother_name" required placeholder="Full Name"
-                                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Occupation</label>
-                                        <input type="text" id="field_mother_occupation" required placeholder="Occupation"
+                                        <input type="text" id="field_mother_name" required placeholder="Full Name" oninput="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                     <div class="space-y-1.5">
                                         <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Mobile</label>
-                                        <input type="tel" id="field_mother_mobile" required placeholder="10 Digit Number" maxlength="10"
+                                        <input type="tel" id="field_mother_mobile" required placeholder="10 Digit Number" maxlength="10" oninput="window.NewCandidateModule.handleGuardianChange()"
+                                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Guardian Block -->
+                            <div class="mb-8 bg-slate-50 dark:bg-slate-900/50 p-5 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                <h3 class="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-4 flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-indigo-500"></span> Guardian Details
+                                </h3>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Relation</label>
+                                        <select id="field_guardian_relation" required onchange="window.NewCandidateModule.handleGuardianChange()"
+                                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                            <option value="" disabled selected>Select Guardian</option>
+                                            <option value="Father">Father</option>
+                                            <option value="Mother">Mother</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Name</label>
+                                        <input type="text" id="field_guardian_name" required placeholder="Full Name"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Aadhar</label>
-                                        <input type="text" id="field_mother_aadhar" required placeholder="0000 0000 0000" maxlength="14"
-                                            oninput="window.NewCandidateModule.formatAadhar(this)"
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Mobile</label>
+                                        <input type="tel" id="field_guardian_mobile" required placeholder="10 Digit Number" maxlength="10"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                 </div>
@@ -543,8 +551,98 @@ window.NewCandidateModule = (function () {
                                     </div>
                                 </div>
 
-                                // Unused file fields removed
+                                <!-- Student Signature -->
+                                <div class="space-y-2 flex flex-col">
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Signature</label>
+                                    <div class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-900/30 text-center relative overflow-hidden group min-h-[160px]">
+                                        <input type="file" id="file_student_signature" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer z-10" onchange="window.NewCandidateModule.processAttachment(this, 'studentSignature')">
+                                        <div id="preview_studentSignature" class="hidden absolute inset-0 bg-slate-900 z-20">
+                                            <img id="img_studentSignature" src="" class="w-full h-full object-contain bg-white">
+                                            <button type="button" onclick="window.NewCandidateModule.clearAttachment('studentSignature', event)" class="absolute top-2 right-2 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow z-30 transition-all">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                            </button>
+                                        </div>
+                                        <div class="flex flex-col items-center space-y-2 group-hover:scale-105 transition-transform duration-300">
+                                            <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                            <span class="text-[11px] font-bold text-brand-600 dark:text-brand-400">Upload Signature</span>
+                                            <span class="text-[9px] text-slate-400 font-medium">JPEG / PNG up to 2MB</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
+                        <!-- SECTION E: Declarations & Financial Data -->
+                        <div class="bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300">
+                            <div class="border-b border-slate-100 dark:border-slate-700/80 pb-4 mb-6 flex items-center gap-3">
+                                <div class="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                                <div>
+                                    <h2 class="text-lg font-extrabold text-slate-800 dark:text-white">Section E: Declarations & Financial Data</h2>
+                                    <p class="text-xs text-slate-400 dark:text-slate-400 font-semibold uppercase tracking-wider">Consents, agreements, and fee handling</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Declarations Block -->
+                            <div class="mb-8 space-y-4">
+                                <label class="flex items-start gap-3 cursor-pointer group">
+                                    <div class="relative flex items-center justify-center w-5 h-5 mt-0.5">
+                                        <input type="checkbox" id="field_declaration_1" required class="w-5 h-5 appearance-none border-2 border-slate-300 dark:border-slate-600 rounded-md checked:bg-brand-500 checked:border-brand-500 transition-all cursor-pointer">
+                                        <svg class="absolute w-3 h-3 text-white pointer-events-none opacity-0 group-has-[:checked]:opacity-100" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+                                    </div>
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">I do hereby declare that the above information is true to the best of my knowledge.</span>
+                                </label>
+                                
+                                <label class="flex items-start gap-3 cursor-pointer group">
+                                    <div class="relative flex items-center justify-center w-5 h-5 mt-0.5">
+                                        <input type="checkbox" id="field_declaration_2" required class="w-5 h-5 appearance-none border-2 border-slate-300 dark:border-slate-600 rounded-md checked:bg-brand-500 checked:border-brand-500 transition-all cursor-pointer">
+                                        <svg class="absolute w-3 h-3 text-white pointer-events-none opacity-0 group-has-[:checked]:opacity-100" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+                                    </div>
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Babla Yoga Training Center will not be held responsible if anything happens to any student during class.</span>
+                                </label>
+                            </div>
+                            
+                            <!-- Financial Data Block -->
+                            <div class="bg-slate-50 dark:bg-slate-900/50 p-5 rounded-2xl border border-slate-100 dark:border-slate-800">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Total Payable Amount</label>
+                                        <div class="relative">
+                                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">₹</span>
+                                            <input type="number" id="field_payable_amount" required placeholder="0.00" min="0" step="1"
+                                                class="w-full pl-8 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="space-y-1.5 flex flex-col justify-end pb-3">
+                                        <label class="flex items-center gap-3 cursor-pointer group">
+                                            <div class="relative flex items-center justify-center w-5 h-5">
+                                                <input type="checkbox" id="field_is_fee_paid" class="w-5 h-5 appearance-none border-2 border-slate-300 dark:border-slate-600 rounded-md checked:bg-brand-500 checked:border-brand-500 transition-all cursor-pointer">
+                                                <svg class="absolute w-3 h-3 text-white pointer-events-none opacity-0 group-has-[:checked]:opacity-100" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+                                            </div>
+                                            <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Mark as Paid</span>
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Payment Mode</label>
+                                        <select id="field_payment_mode" required onchange="window.NewCandidateModule.toggleTxnIdField(this)"
+                                            class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                            <option value="" disabled selected>Select Mode</option>
+                                            <option value="Cash">Cash</option>
+                                            <option value="UPI">UPI (Google Pay / PhonePe)</option>
+                                            <option value="Card">Card</option>
+                                            <option value="Bank Transfer">Bank Transfer (NEFT/IMPS)</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="space-y-1.5" id="txn_id_container">
+                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Transaction ID</label>
+                                        <input type="text" id="field_txn_id" placeholder="UPI Ref / UTR / Txn Number"
+                                            class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -553,6 +651,12 @@ window.NewCandidateModule = (function () {
                             <button type="button" onclick="window.NewCandidateModule.resetFormFields()"
                                 class="w-full sm:w-auto px-6 py-4 rounded-2xl border border-slate-200 dark:border-slate-700 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors text-center cursor-pointer">
                                 Reset Inputs
+                            </button>
+                            
+                            <button type="button" onclick="window.NewCandidateModule.generatePDF()"
+                                class="w-full sm:w-auto px-6 py-4 rounded-2xl border-2 border-brand-500 text-brand-600 dark:text-brand-400 font-bold hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all text-center cursor-pointer flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Generate Form PDF
                             </button>
                             
                             <button type="submit"
@@ -893,26 +997,26 @@ window.NewCandidateModule = (function () {
             DOB: document.getElementById('field_dob').value,
             GENDER: document.getElementById('field_gender').value,
             BLOOD_GROUP: document.getElementById('field_blood_group').value,
-            STUDENT_COACH_SIGN: document.getElementById('field_student_coach_sign').value.trim(),
             STUDENT_AADHAR: aadharVal,
             CATEGORY: document.getElementById('field_category').value,
             STUDENT_MOBILE: mobileVal,
             PHYSICAL_DISABILITY: document.getElementById('field_physical_disability').value.trim(),
             FATHER_NAME: document.getElementById('field_father_name').value.trim(),
-            FATHER_OCCUPATION: document.getElementById('field_father_occupation').value.trim(),
             FATHER_MOBILE: document.getElementById('field_father_mobile').value.trim(),
-            FATHER_AADHAR: document.getElementById('field_father_aadhar').value.replace(/\s+/g, ''),
             MOTHER_NAME: document.getElementById('field_mother_name').value.trim(),
-            MOTHER_OCCUPATION: document.getElementById('field_mother_occupation').value.trim(),
             MOTHER_MOBILE: document.getElementById('field_mother_mobile').value.trim(),
-            MOTHER_AADHAR: document.getElementById('field_mother_aadhar').value.replace(/\s+/g, ''),
-            HOME_ADDRESS: document.getElementById('field_home_address').value.trim(),
-            CONTACT_EMAIL: document.getElementById('field_contact_email').value.trim(),
-            ADMISSION_FEE_PAID: 0,
-            PAYMENT_MODE: "N/A",
-            TXN_ID: "N/A",
+            GUARDIAN_RELATION: document.getElementById('field_guardian_relation').value,
+            GUARDIAN_NAME: document.getElementById('field_guardian_name').value.trim(),
+            GUARDIAN_MOBILE: document.getElementById('field_guardian_mobile').value.trim(),
+            DECLARATION_1: document.getElementById('field_declaration_1').checked ? 'Yes' : 'No',
+            DECLARATION_2: document.getElementById('field_declaration_2').checked ? 'Yes' : 'No',
+            PAYABLE_AMOUNT: document.getElementById('field_payable_amount').value,
+            IS_FEE_PAID: document.getElementById('field_is_fee_paid').checked ? 'Yes' : 'No',
+            PAYMENT_MODE: document.getElementById('field_payment_mode').value,
+            TXN_ID: document.getElementById('field_txn_id').value.trim(),
             // Capture Base64 streams securely from internal state
             STUDENT_PHOTO_URL: state.studentPhoto,
+            STUDENT_SIGNATURE_URL: state.studentSignature,
             TIMESTAMP: new Date().toISOString()
         };
 
@@ -990,7 +1094,7 @@ window.NewCandidateModule = (function () {
         }
 
         // Reset corresponding file input
-        let inputId = 'file_student_photo';
+        let inputId = stateKey === 'studentPhoto' ? 'file_student_photo' : 'file_student_signature';
 
         const fileInput = document.getElementById(inputId);
         if (fileInput) fileInput.value = '';
@@ -1030,6 +1134,57 @@ window.NewCandidateModule = (function () {
     }
 
     /**
+     * Generates a PDF of the application form without triggering cloud upload
+     */
+    function generatePDF() {
+        if (!window.PDFGenerator) {
+            return window.UIUtils.showToast("PDF Utility is not loaded.", "error");
+        }
+        
+        // Gather all variables for mapping
+        const nameVal = document.getElementById('field_student_name').value.trim();
+        const aadharVal = document.getElementById('field_student_aadhar').value.replace(/\s+/g, '');
+        const mobileVal = document.getElementById('field_student_mobile').value.trim();
+
+        // Assemble unified MasterRecord mapping payload
+        const record = {
+            STUDENT_ID: document.getElementById('field_student_id').value,
+            RL_NO: document.getElementById('field_rl_no').value.trim(),
+            SESSION: document.getElementById('field_session').value,
+            DATE_OF_ADMISSION: document.getElementById('field_date_of_admission').value,
+            ENROLLED_COURSE: document.getElementById('field_enrolled_course').value,
+            CLASS_BATCH_DAYS: document.getElementById('field_class_batch_days').value,
+            STUDENT_NAME: nameVal,
+            DOB: document.getElementById('field_dob').value,
+            GENDER: document.getElementById('field_gender').value,
+            BLOOD_GROUP: document.getElementById('field_blood_group').value,
+            STUDENT_AADHAR: aadharVal,
+            CATEGORY: document.getElementById('field_category').value,
+            STUDENT_MOBILE: mobileVal,
+            PHYSICAL_DISABILITY: document.getElementById('field_physical_disability').value.trim(),
+            FATHER_NAME: document.getElementById('field_father_name').value.trim(),
+            FATHER_MOBILE: document.getElementById('field_father_mobile').value.trim(),
+            MOTHER_NAME: document.getElementById('field_mother_name').value.trim(),
+            MOTHER_MOBILE: document.getElementById('field_mother_mobile').value.trim(),
+            GUARDIAN_RELATION: document.getElementById('field_guardian_relation').value,
+            GUARDIAN_NAME: document.getElementById('field_guardian_name').value.trim(),
+            GUARDIAN_MOBILE: document.getElementById('field_guardian_mobile').value.trim(),
+            DECLARATION_1: document.getElementById('field_declaration_1').checked ? 'Yes' : 'No',
+            DECLARATION_2: document.getElementById('field_declaration_2').checked ? 'Yes' : 'No',
+            PAYABLE_AMOUNT: document.getElementById('field_payable_amount').value,
+            IS_FEE_PAID: document.getElementById('field_is_fee_paid').checked ? 'Yes' : 'No',
+            PAYMENT_MODE: document.getElementById('field_payment_mode').value,
+            TXN_ID: document.getElementById('field_txn_id').value.trim(),
+            HOME_ADDRESS: document.getElementById('field_home_address').value.trim(),
+            CONTACT_EMAIL: document.getElementById('field_contact_email').value.trim(),
+            STUDENT_PHOTO_URL: state.studentPhoto,
+            STUDENT_SIGNATURE_URL: state.studentSignature
+        };
+
+        window.PDFGenerator.createApplicationForm(record);
+    }
+
+    /**
      * Resets form values and resets media inputs
      */
     function resetFormFields() {
@@ -1040,6 +1195,7 @@ window.NewCandidateModule = (function () {
 
         // Clear all media attachment bindings out of memory
         clearAttachment('studentPhoto');
+        clearAttachment('studentSignature');
 
         // Regenerate unique Student ID
         const studentIdField = document.getElementById('field_student_id');
@@ -1048,16 +1204,52 @@ window.NewCandidateModule = (function () {
         }
 
         window.UIUtils.showToast("Form fields reset to defaults.", "info");
+    }
 
-        window.UIUtils.showToast("Form fields reset to defaults.", "info");
+    /**
+     * Handles Guardian auto-fill logic
+     */
+    function handleGuardianChange() {
+        const relationElement = document.getElementById('field_guardian_relation');
+        if (!relationElement) return;
+        const relation = relationElement.value;
+        const nameField = document.getElementById('field_guardian_name');
+        const mobileField = document.getElementById('field_guardian_mobile');
+        
+        if (relation === 'Father') {
+            nameField.value = document.getElementById('field_father_name').value;
+            mobileField.value = document.getElementById('field_father_mobile').value;
+            nameField.readOnly = true;
+            mobileField.readOnly = true;
+            nameField.classList.add('bg-slate-50', 'dark:bg-slate-800');
+            mobileField.classList.add('bg-slate-50', 'dark:bg-slate-800');
+        } else if (relation === 'Mother') {
+            nameField.value = document.getElementById('field_mother_name').value;
+            mobileField.value = document.getElementById('field_mother_mobile').value;
+            nameField.readOnly = true;
+            mobileField.readOnly = true;
+            nameField.classList.add('bg-slate-50', 'dark:bg-slate-800');
+            mobileField.classList.add('bg-slate-50', 'dark:bg-slate-800');
+        } else {
+            if (nameField.readOnly) {
+                nameField.value = '';
+                mobileField.value = '';
+            }
+            nameField.readOnly = false;
+            mobileField.readOnly = false;
+            nameField.classList.remove('bg-slate-50', 'dark:bg-slate-800');
+            mobileField.classList.remove('bg-slate-50', 'dark:bg-slate-800');
+        }
     }
 
     return {
         mount,
         handleFormSubmit,
+        generatePDF,
         processAttachment,
         clearAttachment,
         toggleTxnIdField,
+        handleGuardianChange,
         formatAadhar,
         resetFormFields,
         toggleInspector,
