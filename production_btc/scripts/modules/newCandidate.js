@@ -56,7 +56,7 @@
  *     sheet = spreadsheet.insertSheet("Main Records");
  *     var headers = [
  *       'STUDENT_ID', 'RL_NO', 'SESSION', 'DATE_OF_ADMISSION', 'ENROLLED_COURSE', 'CLASS_BATCH_DAYS',
- *       'STUDENT_NAME', 'DOB', 'GENDER', 'BLOOD_GROUP', 'STUDENT_COACH_SIGN', 'STUDENT_AADHAR', 'CATEGORY', 'STUDENT_MOBILE', 'PHYSICAL_DISABILITY',
+ *       'STUDENT_NAME', 'DOB', 'GENDER', 'BLOOD_GROUP', 'RELIGION', 'STUDENT_AADHAR', 'CATEGORY', 'STUDENT_MOBILE', 'PHYSICAL_DISABILITY',
  *       'FATHER_NAME', 'FATHER_OCCUPATION', 'FATHER_MOBILE', 'FATHER_AADHAR',
  *       'MOTHER_NAME', 'MOTHER_OCCUPATION', 'MOTHER_MOBILE', 'MOTHER_AADHAR',
  *       'HOME_ADDRESS', 'CONTACT_EMAIL', 'ADMISSION_FEE_PAID', 'PAYMENT_MODE', 'TXN_ID',
@@ -105,7 +105,7 @@
  *     candidate.DOB || "",
  *     candidate.GENDER || "",
  *     candidate.BLOOD_GROUP || "",
- *     candidate.STUDENT_COACH_SIGN || "",
+ *     candidate.RELIGION || "",
  *     candidate.STUDENT_AADHAR || "",
  *     candidate.CATEGORY || "",
  *     candidate.STUDENT_MOBILE || "",
@@ -294,17 +294,20 @@ window.NewCandidateModule = (function () {
                                 </div>
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Roll Number</label>
-                                    <input type="text" id="field_rl_no" required placeholder="BY-26-XXXX"
+                                    <input type="text" id="field_rl_no" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
-                                <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Academic Session</label>
-                                    <select id="field_session" required
-                                        class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
-                                        <option value="2026-2027">Session 2026-2027</option>
-                                        <option value="2025-2026">Session 2025-2026</option>
-                                        <option value="2027-2028">Session 2027-2028</option>
-                                    </select>
+                                <div class="space-y-1.5 flex gap-2">
+                                    <div class="flex-1">
+                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Session From</label>
+                                        <input type="number" id="field_session_from" required min="2000" max="2099" placeholder="YYYY"
+                                            class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                    </div>
+                                    <div class="flex-1">
+                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Session To</label>
+                                        <input type="number" id="field_session_to" required min="2000" max="2099" placeholder="YYYY"
+                                            class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                    </div>
                                 </div>
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Date of Admission</label>
@@ -316,11 +319,9 @@ window.NewCandidateModule = (function () {
                                     <select id="field_enrolled_course" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Choose Course</option>
-                                        <option value="Basic Hatha Yoga">Basic Hatha Yoga</option>
-                                        <option value="Advanced Vinyasa Flow">Advanced Vinyasa Flow</option>
-                                        <option value="Yoga Teacher Training (TTC)">Yoga Teacher Training (TTC)</option>
-                                        <option value="Pranayama & Meditation Intensive">Pranayama & Meditation Intensive</option>
-                                        <option value="Therapeutic Yoga & Alignment">Therapeutic Yoga & Alignment</option>
+                                        <option value="Teachers Training">Teachers Training</option>
+                                        <option value="Diploma">Diploma</option>
+                                        <option value="Yoga/Hula Hoopla/Karate/Meditation">Yoga/Hula Hoopla/Karate/Meditation</option>
                                     </select>
                                 </div>
                                 <div class="space-y-1.5">
@@ -328,11 +329,8 @@ window.NewCandidateModule = (function () {
                                     <select id="field_class_batch_days" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Choose Schedule</option>
-                                        <option value="Morning Batch: Mon-Wed-Fri (06:00 - 07:30)">Morning: Mon-Wed-Fri</option>
-                                        <option value="Morning Batch: Tue-Thu-Sat (06:00 - 07:30)">Morning: Tue-Thu-Sat</option>
-                                        <option value="Evening Batch: Mon-Wed-Fri (17:30 - 19:00)">Evening: Mon-Wed-Fri</option>
-                                        <option value="Evening Batch: Tue-Thu-Sat (17:30 - 19:00)">Evening: Tue-Thu-Sat</option>
-                                        <option value="Weekend Intensive: Sat-Sun (08:00 - 10:30)">Weekend Intensive</option>
+                                        <option value="Evening: Mon-Wed-Fri">Evening: Mon-Wed-Fri</option>
+                                        <option value="Evening: Sat-Sun-Wed">Evening: Sat-Sun-Wed</option>
                                     </select>
                                 </div>
                             </div>
@@ -388,11 +386,16 @@ window.NewCandidateModule = (function () {
                                     </select>
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Coach Signature (Name)</label>
-                                    <input type="text" id="field_student_coach_sign" required placeholder="Coach / Inspector Name"
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Religion</label>
+                                    <select id="field_religion" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                        <option value="" disabled selected>Select Religion</option>
+                                        <option value="Hindu">Hindu</option>
+                                        <option value="Muslim">Muslim</option>
+                                        <option value="Others">Others</option>
+                                    </select>
                                 </div>
-                                
+
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Aadhar Card No</label>
                                     <input type="text" id="field_student_aadhar" required placeholder="0000 0000 0000" maxlength="14"
@@ -624,7 +627,17 @@ window.NewCandidateModule = (function () {
                                             <span class="text-sm font-bold text-slate-700 dark:text-slate-300">Mark as Paid</span>
                                         </label>
                                     </div>
-                                    
+
+                                    <div class="space-y-1.5">
+                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Academic Session</label>
+                                        <div class="flex gap-2">
+                                            <input type="number" id="field_session_from" required min="2000" max="2099" step="1" maxlength="4" placeholder="From (Year)"
+                                                class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                            <input type="number" id="field_session_to" required min="2000" max="2099" step="1" maxlength="4" placeholder="To (Year)"
+                                                class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
+                                        </div>
+                                    </div>
+
                                     <div class="space-y-1.5">
                                         <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Payment Mode</label>
                                         <select id="field_payment_mode" required onchange="window.NewCandidateModule.toggleTxnIdField(this)"
@@ -989,7 +1002,7 @@ window.NewCandidateModule = (function () {
         const record = {
             STUDENT_ID: document.getElementById('field_student_id').value,
             RL_NO: document.getElementById('field_rl_no').value.trim(),
-            SESSION: document.getElementById('field_session').value,
+            SESSION: document.getElementById('field_session_from').value + "-" + document.getElementById('field_session_to').value,
             DATE_OF_ADMISSION: document.getElementById('field_date_of_admission').value,
             ENROLLED_COURSE: document.getElementById('field_enrolled_course').value,
             CLASS_BATCH_DAYS: document.getElementById('field_class_batch_days').value,
@@ -997,6 +1010,7 @@ window.NewCandidateModule = (function () {
             DOB: document.getElementById('field_dob').value,
             GENDER: document.getElementById('field_gender').value,
             BLOOD_GROUP: document.getElementById('field_blood_group').value,
+            RELIGION: document.getElementById('field_religion').value,
             STUDENT_AADHAR: aadharVal,
             CATEGORY: document.getElementById('field_category').value,
             STUDENT_MOBILE: mobileVal,
@@ -1150,7 +1164,7 @@ window.NewCandidateModule = (function () {
         const record = {
             STUDENT_ID: document.getElementById('field_student_id').value,
             RL_NO: document.getElementById('field_rl_no').value.trim(),
-            SESSION: document.getElementById('field_session').value,
+            SESSION: document.getElementById('field_session_from').value + "-" + document.getElementById('field_session_to').value,
             DATE_OF_ADMISSION: document.getElementById('field_date_of_admission').value,
             ENROLLED_COURSE: document.getElementById('field_enrolled_course').value,
             CLASS_BATCH_DAYS: document.getElementById('field_class_batch_days').value,
@@ -1158,6 +1172,7 @@ window.NewCandidateModule = (function () {
             DOB: document.getElementById('field_dob').value,
             GENDER: document.getElementById('field_gender').value,
             BLOOD_GROUP: document.getElementById('field_blood_group').value,
+            RELIGION: document.getElementById('field_religion').value,
             STUDENT_AADHAR: aadharVal,
             CATEGORY: document.getElementById('field_category').value,
             STUDENT_MOBILE: mobileVal,

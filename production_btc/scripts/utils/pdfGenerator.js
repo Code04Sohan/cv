@@ -2,252 +2,323 @@
  * ==========================================
  * 🖨️ PDF GENERATOR UTILITY (pdfGenerator.js)
  * ==========================================
- * A standalone module to generate client-side PDFs with embedded QR codes.
- * Requires jsPDF and qrcodejs to be loaded globally.
+ * Refined for strict 1-page structural flow and accurate bounds tracking.
  */
-
 window.PDFGenerator = (function () {
     'use strict';
 
     /**
-     * Generates and downloads the Application Form PDF for a candidate
-     * @param {Object} data - The candidate payload matching the standard schema
+     * 1. Dynamic Asset Loading:
+     * Helper function that uses a Canvas element to convert an image URL into a Base64 string.
      */
-    function createApplicationForm(data) {
+    async function getBase64FromUrl(url) {
+        return new Promise((resolve) => {
+            if (!url || url === "" || url.startsWith("Rich Media Stripped")) {
+                return resolve(null);
+            }
+            if (url.startsWith("data:image")) {
+                return resolve(url);
+            }
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, img.width, img.height);
+                ctx.drawImage(img, 0, 0);
+                try {
+                    resolve(canvas.toDataURL('image/jpeg', 0.9));
+                } catch (e) {
+                    console.warn("Canvas toDataURL failed silently:", e);
+                    resolve(null);
+                }
+            };
+            img.onerror = () => {
+                console.warn("Failed to load image for Base64 conversion (silent fallback):", url);
+                resolve(null);
+            };
+            img.src = url;
+        });
+    }
+
+    async function createApplicationForm(data) {
         if (!window.jspdf || !window.jspdf.jsPDF) {
             console.error("jsPDF is not loaded");
             if (window.UIUtils) window.UIUtils.showToast("PDF generation failed: jsPDF library not found.", "error");
             return;
         }
 
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('p', 'mm', 'a4'); // A4 size: 210 x 297 mm
-        const margin = 15;
-        let currentY = 20;
+        if (window.UIUtils) window.UIUtils.showToast("Generating Professional PDF Document...", "info");
 
-        // --- Header Section ---
+        // The very first step: dynamically generate the logo string safely
+        let CENTER_LOGO_BASE64 = null;
+        try {
+            CENTER_LOGO_BASE64 = await getBase64FromUrl('./logo_babla.jpeg');
+        } catch (e) {
+            console.warn("Logo fetch skipped gracefully.");
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        
+        const pageWidth = 210;
+        // Calculate the absolute bottom of the page
+        const pageHeight = doc.internal.pageSize.height;
+        const margin = 15;
+        let currentY = margin;
+
+        // ==========================================
+        // 2. Header Design (Fixed Positioning)
+        // ==========================================
+        
+        // Render CENTER_LOGO_BASE64 in the top-left corner
+        if (CENTER_LOGO_BASE64 && CENTER_LOGO_BASE64.startsWith('data:image')) {
+            doc.addImage(CENTER_LOGO_BASE64, 'JPEG', margin, currentY, 25, 25);
+        }
+
+        // Center-align the text block
+        const headerCenterX = pageWidth / 2;
+
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(22);
-        doc.setTextColor(13, 148, 136); // Brand color (Teal)
-        doc.text("BABLA YOGA TRAINING CENTER", 105, currentY, { align: "center" });
+        doc.setFontSize(16);
+        doc.setTextColor(15, 23, 42); 
+        doc.text("BABLA YOGA TRAINING CENTER", headerCenterX, currentY + 5, { align: 'center' });
         
-        currentY += 10;
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text("Govt. Regd. No. S0032148 of 2021-2022 | Estd: 2015", headerCenterX, currentY + 11, { align: 'center' });
+        
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(14);
-        doc.setTextColor(71, 85, 105); // Slate 600
-        doc.text("Application for Admission", 105, currentY, { align: "center" });
+        doc.setFontSize(8.5);
+        doc.text("Address: Jagriti More, Maynaguri, Jalpaiguri, West Bengal, Pin-735224", headerCenterX, currentY + 16, { align: 'center' });
+        doc.text("Email: bablayogatrainingcenter@gmail.com", headerCenterX, currentY + 20, { align: 'center' });
+        doc.text("Cont. 7076280550 (Call/Wp), 8158027894 (Call)", headerCenterX, currentY + 24, { align: 'center' });
+
+        // Candidate Photo: Reserve a fixed area in the top-right corner
+        const photoW = 30;
+        const photoH = 40;
+        const photoX = pageWidth - margin - photoW;
         
-        currentY += 15;
-        doc.setDrawColor(203, 213, 225); // Slate 300
-        doc.setLineWidth(0.5);
-        doc.line(margin, currentY, 210 - margin, currentY);
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.3);
+        doc.rect(photoX, currentY, photoW, photoH);
         
-        currentY += 10;
-        
-        // Inject Student Photo
         if (data.STUDENT_PHOTO_URL && data.STUDENT_PHOTO_URL.startsWith('data:image')) {
             try {
-                // Top right position
-                doc.addImage(data.STUDENT_PHOTO_URL, 165, 20, 30, 35);
+                doc.addImage(data.STUDENT_PHOTO_URL, 'JPEG', photoX + 1, currentY + 1, photoW - 2, photoH - 2);
             } catch (err) {
-                console.error("Failed to inject student photo:", err);
+                console.warn("Failed to inject student photo:", err);
             }
+        } else {
+            doc.setFontSize(8);
+            doc.setTextColor(148, 163, 184);
+            doc.text("Candidate", photoX + 8, currentY + 18);
+            doc.text("Photo", photoX + 10, currentY + 22);
         }
 
-        // --- Helper Function for Rendering Fields ---
-        function addField(label, value, x, y, valueMaxWidth) {
+        currentY = currentY + Math.max(25, photoH) + 6;
+        
+        doc.setLineWidth(0.5);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin, currentY, pageWidth - margin, currentY);
+        currentY += 8;
+
+        // ==========================================
+        // 3. Body Design (Strict 1-Page Layout)
+        // ==========================================
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(13, 148, 136);
+        doc.text("Admission Details", headerCenterX, currentY, { align: 'center' });
+        currentY += 8;
+
+        const col1LabelX = 15;
+        const col1ValueX = 50;
+        const col2LabelX = 110;
+        const col2ValueX = 145;
+        const col1MaxW = col2LabelX - col1ValueX - 5;
+        const col2MaxW = pageWidth - margin - col2ValueX;
+        const fontSize = 10;
+
+        let col1Y = currentY;
+        let col2Y = currentY;
+
+        function renderRow(label1, val1, label2, val2, spanFullRow = false) {
+            doc.setFontSize(fontSize);
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(10);
-            doc.setTextColor(100, 116, 139); // Slate 500
-            doc.text(`${label}:`, x, y);
+            doc.setTextColor(100, 116, 139);
             
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(15, 23, 42); // Slate 900
+            let startY = Math.max(col1Y, col2Y); // synchronize row starts
+            let newCol1Y = startY;
+            let newCol2Y = startY;
             
-            // Adjust x for value based on label width (approximate)
-            const labelWidth = doc.getTextWidth(`${label}: `);
-            const textLines = doc.splitTextToSize(value || "N/A", valueMaxWidth || 65);
-            doc.text(textLines, x + labelWidth, y);
-            
-            return textLines.length * 5; // Return height taken
-        }
-
-        // --- Section: System & Enrollment Parameters ---
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(13, 148, 136); // Brand color
-        doc.text("System & Enrollment Parameters", margin, currentY);
-        currentY += 8;
-
-        let col1X = margin;
-        let col2X = 110;
-        let rowH = 8;
-        
-        addField("Student ID", data.STUDENT_ID, col1X, currentY);
-        addField("Roll Number", data.RL_NO, col2X, currentY);
-        currentY += rowH;
-        
-        addField("Session", data.SESSION, col1X, currentY);
-        addField("Admission Date", data.DATE_OF_ADMISSION, col2X, currentY);
-        currentY += rowH;
-        
-        addField("Course", data.ENROLLED_COURSE, col1X, currentY, 70);
-        currentY += rowH; // extra space for multiline
-        addField("Class Batch", data.CLASS_BATCH_DAYS, col1X, currentY, 150);
-        
-        currentY += 12;
-        doc.setDrawColor(226, 232, 240); // Slate 200
-        doc.line(margin, currentY, 210 - margin, currentY);
-        currentY += 8;
-
-        // --- Section: Candidate Demographics ---
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(13, 148, 136);
-        doc.text("Candidate Demographics", margin, currentY);
-        currentY += 8;
-
-        addField("Full Name", data.STUDENT_NAME, col1X, currentY);
-        addField("Date of Birth", data.DOB, col2X, currentY);
-        currentY += rowH;
-
-        addField("Gender", data.GENDER, col1X, currentY);
-        addField("Blood Group", data.BLOOD_GROUP, col2X, currentY);
-        currentY += rowH;
-
-        addField("Aadhar No", data.STUDENT_AADHAR, col1X, currentY);
-        addField("Mobile No", data.STUDENT_MOBILE, col2X, currentY);
-        currentY += rowH;
-
-        addField("Category", data.CATEGORY, col1X, currentY);
-        addField("Disability/Notes", data.PHYSICAL_DISABILITY, col2X, currentY, 60);
-        currentY += rowH + 4;
-
-        doc.line(margin, currentY, 210 - margin, currentY);
-        currentY += 8;
-
-        // --- Section: Parent/Guardian Details ---
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(13, 148, 136);
-        doc.text("Parent/Guardian Details", margin, currentY);
-        currentY += 8;
-
-        addField("Father's Name", data.FATHER_NAME, col1X, currentY);
-        addField("Mother's Name", data.MOTHER_NAME, col2X, currentY);
-        currentY += rowH;
-
-        addField("Father's Mobile", data.FATHER_MOBILE, col1X, currentY);
-        addField("Mother's Mobile", data.MOTHER_MOBILE, col2X, currentY);
-        currentY += rowH;
-
-        addField("Guardian Relation", data.GUARDIAN_RELATION, col1X, currentY);
-        addField("Guardian Name", data.GUARDIAN_NAME, col2X, currentY);
-        currentY += rowH;
-
-        addField("Guardian Mobile", data.GUARDIAN_MOBILE, col1X, currentY);
-        currentY += rowH;
-
-        let addressLines = addField("Home Address", data.HOME_ADDRESS, col1X, currentY, 160);
-        currentY += addressLines + 2;
-
-        addField("Contact Email", data.CONTACT_EMAIL, col1X, currentY, 160);
-        currentY += 12;
-        
-        doc.line(margin, currentY, 210 - margin, currentY);
-        currentY += 8;
-
-        // --- Section: Financial & Declarations ---
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.setTextColor(13, 148, 136);
-        doc.text("Financial & Declarations", margin, currentY);
-        currentY += 8;
-        
-        addField("Payable Amount", "Rs. " + (data.PAYABLE_AMOUNT || "0"), col1X, currentY);
-        addField("Fee Paid", data.IS_FEE_PAID, col2X, currentY);
-        currentY += rowH;
-        
-        addField("Payment Mode", data.PAYMENT_MODE, col1X, currentY);
-        addField("Txn ID", data.TXN_ID, col2X, currentY);
-        currentY += rowH;
-        
-        addField("Dec 1 (True Info)", data.DECLARATION_1, col1X, currentY);
-        addField("Dec 2 (Liability)", data.DECLARATION_2, col2X, currentY);
-        currentY += rowH + 4;
-        
-        doc.line(margin, currentY, 210 - margin, currentY);
-        currentY += 8;
-        
-        // Inject Student Signature
-        if (data.STUDENT_SIGNATURE_URL && data.STUDENT_SIGNATURE_URL.startsWith('data:image')) {
-            try {
-                // Bottom right above QR
-                doc.addImage(data.STUDENT_SIGNATURE_URL, 150, currentY, 40, 15);
-                
+            // Column 1
+            if (label1) {
+                doc.text(label1 + ":", col1LabelX, startY);
                 doc.setFont("helvetica", "normal");
-                doc.setFontSize(8);
-                doc.setTextColor(148, 163, 184);
-                doc.text("Student Signature", 160, currentY + 18);
-            } catch (err) {
-                console.error("Failed to inject student signature:", err);
+                doc.setTextColor(15, 23, 42);
+                
+                const maxW = spanFullRow ? (pageWidth - margin - col1ValueX) : col1MaxW;
+                const splitVal1 = doc.splitTextToSize(val1 || "N/A", maxW);
+                doc.text(splitVal1, col1ValueX, startY);
+                newCol1Y = startY + (splitVal1.length * (fontSize * 0.35)) + 3.5;
             }
-        }
-        
-        currentY += 15;
 
-        // --- Generate QR Code ---
-        const qrDataString = `Name: ${data.STUDENT_NAME || 'N/A'}\nRoll: ${data.RL_NO || 'N/A'}\nPhone: ${data.STUDENT_MOBILE || 'N/A'}\nFather: ${data.FATHER_NAME || 'N/A'}\nEmail: ${data.CONTACT_EMAIL || 'N/A'}`;
+            // Column 2
+            if (label2 && !spanFullRow) {
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(100, 116, 139);
+                doc.text(label2 + ":", col2LabelX, startY);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(15, 23, 42);
+                
+                const splitVal2 = doc.splitTextToSize(val2 || "N/A", col2MaxW);
+                doc.text(splitVal2, col2ValueX, startY);
+                newCol2Y = startY + (splitVal2.length * (fontSize * 0.35)) + 3.5;
+            }
+            
+            col1Y = spanFullRow ? newCol1Y : newCol1Y;
+            col2Y = spanFullRow ? newCol1Y : newCol2Y;
+        }
+
+        function renderDivider() {
+            let startY = Math.max(col1Y, col2Y) + 1;
+            doc.setLineWidth(0.2);
+            doc.setDrawColor(241, 245, 249);
+            doc.line(margin, startY, pageWidth - margin, startY);
+            col1Y = startY + 5;
+            col2Y = startY + 5;
+        }
+
+        // Output fixed data perfectly spaced
+        renderRow("Student ID", data.STUDENT_ID, "Roll No", data.RL_NO);
+        renderRow("Session", data.SESSION, "Date of Admission", data.DATE_OF_ADMISSION);
+        renderRow("Course", data.ENROLLED_COURSE, "Class Batch", data.CLASS_BATCH_DAYS);
+        renderDivider();
+
+        renderRow("Full Name", data.STUDENT_NAME, "Date of Birth", data.DOB);
+        renderRow("Gender", data.GENDER, "Blood Group", data.BLOOD_GROUP);
+        renderRow("Religion", data.RELIGION, "Category", data.CATEGORY);
+        renderRow("Aadhar No", data.STUDENT_AADHAR, "Mobile No", data.STUDENT_MOBILE);
+        renderRow("Disability Notes", data.PHYSICAL_DISABILITY, null, null, true);
+        renderDivider();
+
+        renderRow("Father's Name", data.FATHER_NAME, "Father's Mobile", data.FATHER_MOBILE);
+        renderRow("Mother's Name", data.MOTHER_NAME, "Mother's Mobile", data.MOTHER_MOBILE);
+        renderRow("Guardian", data.GUARDIAN_RELATION + (data.GUARDIAN_NAME ? ' (' + data.GUARDIAN_NAME + ')' : ''), "Guardian Mob", data.GUARDIAN_MOBILE);
+        renderRow("Contact Email", data.CONTACT_EMAIL, null, null, true);
+        renderRow("Home Address", data.HOME_ADDRESS, null, null, true);
+        renderDivider();
+
+        renderRow("Payable Amount", "Rs. " + (data.PAYABLE_AMOUNT || "0"), "Is Fee Paid", data.IS_FEE_PAID);
+        renderRow("Payment Mode", data.PAYMENT_MODE, "Txn ID", data.TXN_ID);
+
+        let finalGridY = Math.max(col1Y, col2Y);
+
+        // ==========================================
+        // 4. Footer & Declarations Adjustments
+        // ==========================================
         
-        if (typeof QRCode !== 'undefined') {
+        let cursorY = finalGridY + 15;
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(15, 23, 42);
+        doc.text("Declarations", 15, cursorY);
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(71, 85, 105);
+        
+        const dec1 = `1. ${data.DECLARATION_1 === 'Yes' ? '[X]' : '[ ]'} I declare that all the information provided above is true and correct to the best of my knowledge.`;
+        const dec2 = `2. ${data.DECLARATION_2 === 'Yes' ? '[X]' : '[ ]'} I understand the risks involved in physical training and release the center from any liability.`;
+        
+        const splitDec1 = doc.splitTextToSize(dec1, 180);
+        doc.text(splitDec1, 15, cursorY + 5);
+        
+        const dec2Offset = cursorY + 5 + (splitDec1.length * (8.5 * 0.35)) + 2;
+        const splitDec2 = doc.splitTextToSize(dec2, 180);
+        doc.text(splitDec2, 15, dec2Offset);
+
+        // Fixed Footer Base (Bottom Left / Bottom Right)
+        const finishPDF = () => {
+            const sanitizedName = (data.STUDENT_NAME || "Candidate").replace(/[^a-zA-Z0-9]/g, '_');
+            doc.save(`BYTC_Admission_${sanitizedName}.pdf`);
+            if (window.UIUtils) window.UIUtils.showToast("Professional PDF Generated Successfully!", "success");
+        };
+
+        const renderSignaturesAndSave = (qrImage) => {
+            // QR Code: Lock strictly to the bottom-left corner
+            const qrX = 15;
+            const qrY = pageHeight - 45;
+            if (qrImage) {
+                doc.addImage(qrImage, 'PNG', qrX, qrY, 24, 24);
+            }
+            
+            // Signature Image & Date: Lock strictly to the bottom-right corner
+            const signX = 140;
+            const signY = pageHeight - 40;
+            const signWidth = 40;
+            const signHeight = 12;
+            
+            if (data.STUDENT_SIGNATURE_URL && data.STUDENT_SIGNATURE_URL.startsWith('data:image')) {
+                try {
+                    doc.addImage(data.STUDENT_SIGNATURE_URL, 'JPEG', signX, signY - signHeight - 2, signWidth, signHeight);
+                } catch (err) {
+                    console.warn("Signature inject failed silently:", err);
+                }
+            }
+            
+            doc.setLineWidth(0.5);
+            doc.setDrawColor(15, 23, 42);
+            doc.line(signX, signY, signX + signWidth, signY);
+            
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(15, 23, 42);
+            doc.text(`Date: ${new Date().toLocaleDateString()}`, signX, signY + 5);
+            
+            doc.setFont("helvetica", "bold");
+            doc.text("Candidate Signature", signX, signY + 9);
+
+            finishPDF();
+        };
+
+        // Generate QR Code securely
+        const qrDataString = `Name: ${data.STUDENT_NAME || 'N/A'}\nRoll: ${data.RL_NO || 'N/A'}\nSession: ${data.SESSION || 'N/A'}\nMobile: ${data.STUDENT_MOBILE || 'N/A'}`;
+        if (typeof window.QRCode !== 'undefined') {
             const qrContainer = document.createElement("div");
             qrContainer.style.position = "absolute";
             qrContainer.style.left = "-9999px";
             document.body.appendChild(qrContainer);
 
-            new QRCode(qrContainer, {
+            new window.QRCode(qrContainer, {
                 text: qrDataString,
                 width: 128,
                 height: 128,
-                correctLevel: QRCode.CorrectLevel.M
+                correctLevel: window.QRCode.CorrectLevel.M
             });
 
-            // Need to wait slightly for QRCode to finish rendering to canvas
             setTimeout(() => {
+                let qrDataUrl = null;
                 try {
                     const canvas = qrContainer.querySelector("canvas");
                     if (canvas) {
-                        const qrImage = canvas.toDataURL("image/png");
-                        // Add QR code to bottom-left
-                        doc.addImage(qrImage, 'PNG', margin, currentY, 35, 35);
-                        
-                        doc.setFont("helvetica", "normal");
-                        doc.setFontSize(8);
-                        doc.setTextColor(148, 163, 184); // Slate 400
-                        doc.text("Official Automated Record", margin + 40, currentY + 15);
-                        doc.text(`Timestamp: ${new Date().toLocaleString()}`, margin + 40, currentY + 20);
-                        doc.text("Babla Yoga Training Center - Admissions Engine", margin + 40, currentY + 25);
+                        qrDataUrl = canvas.toDataURL("image/png");
                     }
-                } catch (err) {
-                    console.error("QR Code rendering failed:", err);
-                } finally {
-                    document.body.removeChild(qrContainer);
-                    
-                    // Save the PDF
-                    const sanitizedName = (data.STUDENT_NAME || "Candidate").replace(/[^a-zA-Z0-9]/g, '_');
-                    doc.save(`Application_${sanitizedName}.pdf`);
-                    if (window.UIUtils) window.UIUtils.showToast("PDF generated successfully!", "success");
-                }
+                } catch(e) {}
+                document.body.removeChild(qrContainer);
+                renderSignaturesAndSave(qrDataUrl);
             }, 100);
         } else {
-            console.warn("qrcodejs not loaded, skipping QR generation.");
-            const sanitizedName = (data.STUDENT_NAME || "Candidate").replace(/[^a-zA-Z0-9]/g, '_');
-            doc.save(`Application_${sanitizedName}.pdf`);
-            if (window.UIUtils) window.UIUtils.showToast("PDF generated (without QR) successfully!", "success");
+            renderSignaturesAndSave(null);
         }
     }
 
-    // Expose Public API
     return {
         createApplicationForm
     };
