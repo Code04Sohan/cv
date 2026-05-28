@@ -56,14 +56,14 @@ window.PDFGenerator = (function () {
         // The very first step: dynamically generate the logo string safely
         let CENTER_LOGO_BASE64 = null;
         try {
-            CENTER_LOGO_BASE64 = await getBase64FromUrl('./logo_babla.jpeg');
+            CENTER_LOGO_BASE64 = await getBase64FromUrl('./resources/logo_babla.jpeg');
         } catch (e) {
             console.warn("Logo fetch skipped gracefully.");
         }
 
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('p', 'mm', 'a4');
-        
+
         const pageWidth = 210;
         // Calculate the absolute bottom of the page
         const pageHeight = doc.internal.pageSize.height;
@@ -73,7 +73,7 @@ window.PDFGenerator = (function () {
         // ==========================================
         // 2. Header Design (Fixed Positioning)
         // ==========================================
-        
+
         // Render CENTER_LOGO_BASE64 in the top-left corner
         if (CENTER_LOGO_BASE64 && CENTER_LOGO_BASE64.startsWith('data:image')) {
             doc.addImage(CENTER_LOGO_BASE64, 'JPEG', margin, currentY, 25, 25);
@@ -84,13 +84,13 @@ window.PDFGenerator = (function () {
 
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
-        doc.setTextColor(15, 23, 42); 
+        doc.setTextColor(15, 23, 42);
         doc.text("BABLA YOGA TRAINING CENTER", headerCenterX, currentY + 5, { align: 'center' });
-        
+
         doc.setFontSize(9);
         doc.setTextColor(71, 85, 105);
         doc.text("Govt. Regd. No. S0032148 of 2021-2022 | Estd: 2015", headerCenterX, currentY + 11, { align: 'center' });
-        
+
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.5);
         doc.text("Address: Jagriti More, Maynaguri, Jalpaiguri, West Bengal, Pin-735224", headerCenterX, currentY + 16, { align: 'center' });
@@ -101,11 +101,11 @@ window.PDFGenerator = (function () {
         const photoW = 30;
         const photoH = 40;
         const photoX = pageWidth - margin - photoW;
-        
+
         doc.setDrawColor(203, 213, 225);
         doc.setLineWidth(0.3);
         doc.rect(photoX, currentY, photoW, photoH);
-        
+
         if (data.STUDENT_PHOTO_URL && data.STUDENT_PHOTO_URL.startsWith('data:image')) {
             try {
                 doc.addImage(data.STUDENT_PHOTO_URL, 'JPEG', photoX + 1, currentY + 1, photoW - 2, photoH - 2);
@@ -120,7 +120,7 @@ window.PDFGenerator = (function () {
         }
 
         currentY = currentY + Math.max(25, photoH) + 6;
-        
+
         doc.setLineWidth(0.5);
         doc.setDrawColor(226, 232, 240);
         doc.line(margin, currentY, pageWidth - margin, currentY);
@@ -129,7 +129,7 @@ window.PDFGenerator = (function () {
         // ==========================================
         // 3. Body Design (Strict 1-Page Layout)
         // ==========================================
-        
+
         doc.setFont("helvetica", "bold");
         doc.setFontSize(13);
         doc.setTextColor(13, 148, 136);
@@ -151,17 +151,17 @@ window.PDFGenerator = (function () {
             doc.setFontSize(fontSize);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(100, 116, 139);
-            
+
             let startY = Math.max(col1Y, col2Y); // synchronize row starts
             let newCol1Y = startY;
             let newCol2Y = startY;
-            
+
             // Column 1
             if (label1) {
                 doc.text(label1 + ":", col1LabelX, startY);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(15, 23, 42);
-                
+
                 const maxW = spanFullRow ? (pageWidth - margin - col1ValueX) : col1MaxW;
                 const splitVal1 = doc.splitTextToSize(val1 || "N/A", maxW);
                 doc.text(splitVal1, col1ValueX, startY);
@@ -175,12 +175,12 @@ window.PDFGenerator = (function () {
                 doc.text(label2 + ":", col2LabelX, startY);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(15, 23, 42);
-                
+
                 const splitVal2 = doc.splitTextToSize(val2 || "N/A", col2MaxW);
                 doc.text(splitVal2, col2ValueX, startY);
                 newCol2Y = startY + (splitVal2.length * (fontSize * 0.35)) + 3.5;
             }
-            
+
             col1Y = spanFullRow ? newCol1Y : newCol1Y;
             col2Y = spanFullRow ? newCol1Y : newCol2Y;
         }
@@ -222,24 +222,24 @@ window.PDFGenerator = (function () {
         // ==========================================
         // 4. Footer & Declarations Adjustments
         // ==========================================
-        
+
         let cursorY = finalGridY + 15;
-        
+
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(15, 23, 42);
         doc.text("Declarations", 15, cursorY);
-        
+
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.5);
         doc.setTextColor(71, 85, 105);
-        
+
         const dec1 = `1. ${data.DECLARATION_1 === 'Yes' ? '[X]' : '[ ]'} I declare that all the information provided above is true and correct to the best of my knowledge.`;
         const dec2 = `2. ${data.DECLARATION_2 === 'Yes' ? '[X]' : '[ ]'} I understand the risks involved in physical training and release the center from any liability.`;
-        
+
         const splitDec1 = doc.splitTextToSize(dec1, 180);
         doc.text(splitDec1, 15, cursorY + 5);
-        
+
         const dec2Offset = cursorY + 5 + (splitDec1.length * (8.5 * 0.35)) + 2;
         const splitDec2 = doc.splitTextToSize(dec2, 180);
         doc.text(splitDec2, 15, dec2Offset);
@@ -258,13 +258,13 @@ window.PDFGenerator = (function () {
             if (qrImage) {
                 doc.addImage(qrImage, 'PNG', qrX, qrY, 24, 24);
             }
-            
+
             // Signature Image & Date: Lock strictly to the bottom-right corner
             const signX = 140;
             const signY = pageHeight - 40;
             const signWidth = 40;
             const signHeight = 12;
-            
+
             if (data.STUDENT_SIGNATURE_URL && data.STUDENT_SIGNATURE_URL.startsWith('data:image')) {
                 try {
                     doc.addImage(data.STUDENT_SIGNATURE_URL, 'JPEG', signX, signY - signHeight - 2, signWidth, signHeight);
@@ -272,16 +272,16 @@ window.PDFGenerator = (function () {
                     console.warn("Signature inject failed silently:", err);
                 }
             }
-            
+
             doc.setLineWidth(0.5);
             doc.setDrawColor(15, 23, 42);
             doc.line(signX, signY, signX + signWidth, signY);
-            
+
             doc.setFontSize(9);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(15, 23, 42);
             doc.text(`Date: ${new Date().toLocaleDateString()}`, signX, signY + 5);
-            
+
             doc.setFont("helvetica", "bold");
             doc.text("Candidate Signature", signX, signY + 9);
 
@@ -310,7 +310,7 @@ window.PDFGenerator = (function () {
                     if (canvas) {
                         qrDataUrl = canvas.toDataURL("image/png");
                     }
-                } catch(e) {}
+                } catch (e) { }
                 document.body.removeChild(qrContainer);
                 renderSignaturesAndSave(qrDataUrl);
             }, 100);
