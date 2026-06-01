@@ -315,10 +315,10 @@ window.NewCandidateModule = (function () {
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Enrolled Course</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Enrolled Class</label>
                                     <select id="field_enrolled_course" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
-                                        <option value="" disabled selected>Choose Course</option>
+                                        <option value="" disabled selected>Select Class</option>
                                         <option value="Teachers Training">Teachers Training</option>
                                         <option value="Diploma">Diploma</option>
                                         <option value="Yoga/Hula Hoopla/Karate/Meditation">Yoga/Hula Hoopla/Karate/Meditation</option>

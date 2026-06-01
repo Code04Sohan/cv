@@ -8,40 +8,61 @@ window.PDFGenerator = (function () {
     'use strict';
 
     /**
-     * 1. Dynamic Asset Loading:
-     * Helper function that uses a Canvas element to convert an image URL into a Base64 string.
+     * Resolves a Google Drive share/view URL to a direct binary stream URL.
      */
-    async function getBase64FromUrl(url) {
-        return new Promise((resolve) => {
-            if (!url || url === "" || url.startsWith("Rich Media Stripped")) {
-                return resolve(null);
-            }
-            if (url.startsWith("data:image")) {
-                return resolve(url);
-            }
-            const img = new Image();
-            img.crossOrigin = 'Anonymous';
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, img.width, img.height);
-                ctx.drawImage(img, 0, 0);
-                try {
-                    resolve(canvas.toDataURL('image/jpeg', 0.9));
-                } catch (e) {
-                    console.warn("Canvas toDataURL failed silently:", e);
-                    resolve(null);
-                }
-            };
-            img.onerror = () => {
-                console.warn("Failed to load image for Base64 conversion (silent fallback):", url);
-                resolve(null);
-            };
-            img.src = url;
-        });
+    function resolveDriveUrl(url) {
+        if (!url || typeof url !== 'string') return '';
+        if (url.startsWith('data:')) return url;
+        const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/) || url.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+        if (match && match[1]) {
+            return `https://docs.google.com/uc?export=download&id=${match[1]}`;
+        }
+        return url;
+    }
+
+    /**
+     * Fetches any image URL (including resolved Drive stream links) as a Blob,
+     * converts it to a Base64 data URI string. Bypasses CORS taint.
+     */
+    async function getBase64FromDriveUrl(url) {
+        if (!url || typeof url !== 'string' || url.trim() === '') return null;
+        if (url.startsWith('Rich Media Stripped')) return null;
+        if (url.startsWith('data:')) return url;
+
+        const streamUrl = resolveDriveUrl(url);
+
+        try {
+            const response = await fetch(streamUrl, { mode: 'cors' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            return await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(blob);
+            });
+        } catch (fetchErr) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, img.width, img.height);
+                        ctx.drawImage(img, 0, 0);
+                        resolve(canvas.toDataURL('image/jpeg', 0.85));
+                    } catch (e) {
+                        resolve(null);
+                    }
+                };
+                img.onerror = () => resolve(null);
+                img.src = streamUrl;
+            });
+        }
     }
 
     async function createApplicationForm(data) {
@@ -53,12 +74,19 @@ window.PDFGenerator = (function () {
 
         if (window.UIUtils) window.UIUtils.showToast("Generating Professional PDF Document...", "info");
 
-        // The very first step: dynamically generate the logo string safely
+        // The very first step: dynamically resolve ALL image assets
         let CENTER_LOGO_BASE64 = null;
+        let STUDENT_PHOTO_BASE64 = null;
+        let STUDENT_SIGNATURE_BASE64 = null;
+        
         try {
-            CENTER_LOGO_BASE64 = await getBase64FromUrl('./resources/logo_babla.jpeg');
+            [CENTER_LOGO_BASE64, STUDENT_PHOTO_BASE64, STUDENT_SIGNATURE_BASE64] = await Promise.all([
+                getBase64FromDriveUrl('./resources/logo_babla.jpeg'),
+                getBase64FromDriveUrl(data.STUDENT_PHOTO_URL),
+                getBase64FromDriveUrl(data.STUDENT_SIGNATURE_URL)
+            ]);
         } catch (e) {
-            console.warn("Logo fetch skipped gracefully.");
+            console.warn("Image resolution failed gracefully:", e);
         }
 
         const { jsPDF } = window.jspdf;
@@ -106,9 +134,9 @@ window.PDFGenerator = (function () {
         doc.setLineWidth(0.3);
         doc.rect(photoX, currentY, photoW, photoH);
 
-        if (data.STUDENT_PHOTO_URL && data.STUDENT_PHOTO_URL.startsWith('data:image')) {
+        if (STUDENT_PHOTO_BASE64 && STUDENT_PHOTO_BASE64.startsWith('data:image')) {
             try {
-                doc.addImage(data.STUDENT_PHOTO_URL, 'JPEG', photoX + 1, currentY + 1, photoW - 2, photoH - 2);
+                doc.addImage(STUDENT_PHOTO_BASE64, 'JPEG', photoX + 1, currentY + 1, photoW - 2, photoH - 2);
             } catch (err) {
                 console.warn("Failed to inject student photo:", err);
             }
@@ -197,7 +225,7 @@ window.PDFGenerator = (function () {
         // Output fixed data perfectly spaced
         renderRow("Student ID", data.STUDENT_ID, "Roll No", data.RL_NO);
         renderRow("Session", data.SESSION, "Date of Admission", data.DATE_OF_ADMISSION);
-        renderRow("Course", data.ENROLLED_COURSE, "Class Batch", data.CLASS_BATCH_DAYS);
+        renderRow("Class", data.ENROLLED_COURSE, "Class Batch", data.CLASS_BATCH_DAYS);
         renderDivider();
 
         renderRow("Full Name", data.STUDENT_NAME, "Date of Birth", data.DOB);
@@ -265,9 +293,9 @@ window.PDFGenerator = (function () {
             const signWidth = 40;
             const signHeight = 12;
 
-            if (data.STUDENT_SIGNATURE_URL && data.STUDENT_SIGNATURE_URL.startsWith('data:image')) {
+            if (STUDENT_SIGNATURE_BASE64 && STUDENT_SIGNATURE_BASE64.startsWith('data:image')) {
                 try {
-                    doc.addImage(data.STUDENT_SIGNATURE_URL, 'JPEG', signX, signY - signHeight - 2, signWidth, signHeight);
+                    doc.addImage(STUDENT_SIGNATURE_BASE64, 'JPEG', signX, signY - signHeight - 2, signWidth, signHeight);
                 } catch (err) {
                     console.warn("Signature inject failed silently:", err);
                 }
