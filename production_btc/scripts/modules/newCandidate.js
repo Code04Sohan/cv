@@ -1014,6 +1014,8 @@ window.NewCandidateModule = (function () {
             STUDENT_AADHAR: aadharVal,
             CATEGORY: document.getElementById('field_category').value,
             STUDENT_MOBILE: mobileVal,
+            CONTACT_EMAIL: document.getElementById('field_contact_email').value.trim(),
+            HOME_ADDRESS: document.getElementById('field_home_address').value.trim(),
             PHYSICAL_DISABILITY: document.getElementById('field_physical_disability').value.trim(),
             FATHER_NAME: document.getElementById('field_father_name').value.trim(),
             FATHER_MOBILE: document.getElementById('field_father_mobile').value.trim(),

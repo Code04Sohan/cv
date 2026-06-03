@@ -520,6 +520,8 @@ window.DirectoryViewerModule = (function () {
                             field('Blood Group', data.BLOOD_GROUP) +
                             field('Category', data.CATEGORY) +
                             field('Aadhaar No.', aadharDisplay) +
+                            field('Contact Email', data.CONTACT_EMAIL) +
+                            field('Home Address', data.HOME_ADDRESS) +
                             `<div class="col-span-2 flex flex-col gap-0.5">
                                 <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Physical Disability Notes</span>
                                 <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">${data.PHYSICAL_DISABILITY || '—'}</span>
@@ -735,6 +737,14 @@ window.DirectoryViewerModule = (function () {
                                     <label class="text-xs font-bold text-slate-500 uppercase">Physical Disability / Notes</label>
                                     <input type="text" id="edit_disability" value="${data.PHYSICAL_DISABILITY || ''}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all">
                                 </div>
+                                <div class="space-y-1.5 md:col-span-2">
+                                    <label class="text-xs font-bold text-slate-500 uppercase">Contact Email</label>
+                                    <input type="email" id="edit_email" value="${data.CONTACT_EMAIL || ''}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                                </div>
+                                <div class="space-y-1.5 md:col-span-2">
+                                    <label class="text-xs font-bold text-slate-500 uppercase">Home Address</label>
+                                    <input type="text" id="edit_address" value="${data.HOME_ADDRESS || ''}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                                </div>
                             </div>
                         </div>
 
@@ -920,6 +930,8 @@ window.DirectoryViewerModule = (function () {
             STUDENT_AADHAR: newAadhar,
             CATEGORY: document.getElementById('edit_category').value.trim(),
             STUDENT_MOBILE: document.getElementById('edit_mobile').value.trim(),
+            CONTACT_EMAIL: document.getElementById('edit_email').value.trim(),
+            HOME_ADDRESS: document.getElementById('edit_address').value.trim(),
             PHYSICAL_DISABILITY: document.getElementById('edit_disability').value.trim(),
             FATHER_NAME: document.getElementById('edit_father_name').value.trim(),
             FATHER_MOBILE: document.getElementById('edit_father_mobile').value.trim(),

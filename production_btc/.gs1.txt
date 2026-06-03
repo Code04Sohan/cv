@@ -1,0 +1,414 @@
+/**
+ * ====================================================================
+ * 🧘 BABLA YOGA TRAINING CENTER - ERP CLOUD ENGINE BACKEND (.gs)
+ * ====================================================================
+ * 
+ * Paste this entire script into your Google Apps Script editor.
+ * Go to "Services" (+) and add the "Google Drive API".
+ * 
+ * Setup Guide:
+ * 1. SPREADSHEET_ID: The ID of your Google Sheet.
+ * 2. DRIVE_FOLDER_ID: Optional folder ID for file streaming. If blank or invalid, 
+ *    the engine will automatically find or create a folder named "Babla Yoga Candidate Documents".
+ * 3. MASTER_SHEET_NAME: Matches the tab name (default "Main Recoreds").
+ * 4. ADMIN_EMAIL: Receives secure password-override OTP codes.
+ * 5. ADMIN_PASS: Managed via Script Properties. Defaults to "admin123" if uninitialized.
+ */
+
+/**
+ * ==========================================
+ * ⚙️ MODULE 1: SYSTEM CONFIGURATION
+ * ==========================================
+ */
+const CONFIG = {
+  SPREADSHEET_ID: "1s04Yy978ZBMtBDoQX5Wt2ewJ0UZCDSHd-bN5zwwOvrc",
+  DRIVE_FOLDER_ID: "1JAcCXmiEFOqucnUD4SUcJVC91-8CP9uz",
+  MASTER_SHEET_NAME: "Main Recoreds",
+  ADMIN_EMAIL: "adhikarijyotshna5408@gmail.com"
+};
+
+/**
+ * 🗄️ PREDEFINED SCHEMA REGISTRY (Strict Templates)
+ * Enforces rigid SQL-like structural tables for high-speed indexing.
+ */
+const SHEET_TEMPLATES = {
+  // Primary Master Ingestion Row Layout
+  MasterRecord: [
+    'STUDENT_ID', 'RL_NO', 'SESSION', 'DATE_OF_ADMISSION', 'ENROLLED_COURSE', 'CLASS_BATCH_DAYS', 
+    'STUDENT_NAME', 'DOB', 'GENDER', 'BLOOD_GROUP', 'RELIGION', 'STUDENT_AADHAR', 'CATEGORY', 'STUDENT_MOBILE', 'CONTACT_EMAIL', 'HOME_ADDRESS', 'PHYSICAL_DISABILITY', 
+    'FATHER_NAME', 'FATHER_MOBILE', 'MOTHER_NAME', 'MOTHER_MOBILE', 'GUARDIAN_RELATION', 'GUARDIAN_NAME', 'GUARDIAN_MOBILE', 
+    'DECLARATION_1', 'DECLARATION_2', 'PAYABLE_AMOUNT', 'IS_FEE_PAID', 'PAYMENT_MODE', 'TXN_ID', 
+    'STUDENT_PHOTO_URL', 'STUDENT_SIGNATURE_URL', 'TIMESTAMP'
+  ]
+};
+
+/**
+ * Standardizes all JSON responses to the frontend.
+ */
+function createResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Utility to access persistent storage securely.
+ */
+function getProps() {
+  return PropertiesService.getScriptProperties();
+}
+
+/**
+ * ==========================================
+ * 🛡️ MODULE 2: SECURITY & SESSION CONTROL
+ * ==========================================
+ */
+
+/**
+ * Verifies the incoming token matches the single active device session.
+ */
+function validateSession(incomingToken) {
+  if (!incomingToken) return false;
+  const activeToken = getProps().getProperty("SESSION_TOKEN");
+  return (incomingToken === activeToken);
+}
+
+/**
+ * Handles user login and enforces the Single-Session policy.
+ */
+function handleLogin(payload) {
+  const props = getProps();
+  let storedPass = props.getProperty("ADMIN_PASS");
+  
+  if (!storedPass) {
+    // Graceful initialization fallback to "admin123" if script properties aren't set yet
+    storedPass = "admin123";
+    props.setProperty("ADMIN_PASS", storedPass);
+  }
+
+  if (payload.password === storedPass) {
+    const newToken = Utilities.getUuid();
+    props.setProperty("SESSION_TOKEN", newToken); // Invalidates old sessions
+    return createResponse({ status: "success", token: newToken });
+  }
+  
+  return createResponse({ status: "error", message: "Invalid Security Key." });
+}
+
+/**
+ * ==========================================
+ * 🚦 MODULE 3: ROUTING ENGINE (GATEKEEPER)
+ * ==========================================
+ */
+function doPost(e) {
+  try {
+    if (!e.postData || !e.postData.contents) {
+        return createResponse({ status: "error", message: "Empty payload." });
+    }
+    
+    const payload = JSON.parse(e.postData.contents);
+    const action = payload.action;
+
+    // A. PUBLIC ROUTES (No auth required)
+    if (action === "LOGIN") return handleLogin(payload);
+    if (action === "REQUEST_RESET") return requestReset(payload);
+    if (action === "COMPLETE_RESET") return verifyAndReset(payload);
+
+    // B. THE GATEKEEPER - Enforce token checks on secure endpoints
+    if (!validateSession(payload.token)) {
+      return createResponse({ status: "error", message: "Unauthorized or Expired Session." });
+    }
+
+    // C. SECURE ROUTES
+    switch (action) {
+      case "VALIDATE_SESSION":
+        return createResponse({ status: "success", message: "Session valid." });
+      
+      // Candidate Ingestion Engine integration
+      case "ADD_CANDIDATE":
+        return handleAddCandidate(payload.candidate);
+        
+      case "FETCH_DIRECTORY":
+        return handleFetchDirectory(payload);
+        
+      case "EDIT_RECORD":
+        return handleEditRecord(payload.record);
+        
+      default:
+        return createResponse({ status: "error", message: "Unknown action." });
+    }
+  } catch (error) {
+    return createResponse({ status: "error", message: "Engine Error: " + error.toString() });
+  }
+}
+
+/**
+ * ==========================================
+ * 🚨 MODULE 4: OTP & SECURITY OVERRIDE
+ * ==========================================
+ */
+const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+function requestReset(payload) {
+  const props = getProps();
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  props.setProperty("RESET_OTP", otp);
+  props.setProperty("OTP_TIMESTAMP", new Date().getTime().toString());
+  
+  try {
+    MailApp.sendEmail({
+      to: CONFIG.ADMIN_EMAIL,
+      subject: "Babla Yoga Training Center ERP Portal - Password Reset Required",
+      body: `Your secure identity override verification token is: ${otp}\n\nThis token expires in 5 minutes.`
+    });
+    return createResponse({ status: "success", message: "OTP transmitted." });
+  } catch (e) {
+    return createResponse({ status: "error", message: "MailApp quota exceeded or unauthorized: " + e.toString() });
+  }
+}
+
+function verifyAndReset(payload) {
+  const props = getProps();
+  const savedOtp = props.getProperty("RESET_OTP");
+  const savedTimestamp = parseInt(props.getProperty("OTP_TIMESTAMP") || "0", 10);
+  
+  if (savedOtp && payload.otp === savedOtp && (new Date().getTime() - savedTimestamp) < OTP_EXPIRY_MS) {
+    props.setProperty("ADMIN_PASS", payload.newPassword);
+    props.deleteProperty("RESET_OTP");
+    props.deleteProperty("OTP_TIMESTAMP");
+    props.deleteProperty("SESSION_TOKEN"); // Terminate all other sessions
+    return createResponse({ status: "success", message: "Security Key updated." });
+  }
+  return createResponse({ status: "error", message: "Invalid or expired OTP." });
+}
+
+/**
+ * ==========================================
+ * 🗂️ MODULE 5: STRICT COLLECTION MANAGEMENT
+ * ==========================================
+ */
+
+/**
+ * ==========================================
+ * 🗄️ MODULE 6: CRUD & FILE STREAMING OPERATIONS
+ * ==========================================
+ */
+
+/**
+ * Converts a raw base64 string into a drive file, returning its public sharing URL.
+ * Handles folder search and creation with multi-layered fallbacks.
+ */
+function processBase64File(fileName, mimeType, base64Data) {
+  if (!base64Data) return "";
+  
+  const cleanData = base64Data.split(',').pop(); 
+  const decoded = Utilities.base64Decode(cleanData);
+  const blob = Utilities.newBlob(decoded, mimeType, fileName);
+  
+  // Auto-Healing Storage: get or create folder by name directly
+  const parentFolder = getOrCreateDriveFolder("Babla Yoga Candidate Documents");
+  
+  const file = parentFolder.createFile(blob);
+  
+  // Set sharing properties viewable by anyone with the link
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  
+  return `https://drive.usercontent.google.com/download?id=${file.getId()}&export=view`;
+}
+
+function getOrCreateDriveFolder(folderName) {
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+  return DriveApp.createFolder(folderName);
+}
+
+/**
+ * Fetches all records from the directory securely mapped to headers
+ */
+function handleFetchDirectory(payload) {
+  const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
+  
+  if (!sheet) {
+    return createResponse({ status: "success", data: [] });
+  }
+  
+  const dataRange = sheet.getDataRange();
+  const allValues = dataRange.getValues();
+  
+  if (allValues.length <= 1) {
+    return createResponse({ status: "success", data: [] });
+  }
+  
+  const headers = allValues[0];
+  const records = [];
+  
+  // Dynamically pack rows using the true runtime sheet headers
+  for (let i = 1; i < allValues.length; i++) {
+    const row = allValues[i];
+    const record = {};
+    for (let j = 0; j < headers.length; j++) {
+      record[headers[j]] = row[j];
+    }
+    records.push(record);
+  }
+  
+  return createResponse({ status: "success", data: records });
+}
+
+/**
+ * Edits a specific record based on STUDENT_ID
+ */
+function handleEditRecord(record) {
+  const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
+  
+  if (!sheet) {
+    return createResponse({ status: "error", message: "Database not found." });
+  }
+  
+  const dataRange = sheet.getDataRange();
+  const allValues = dataRange.getValues();
+  const headers = allValues[0];
+  
+  const studentIdIndex = headers.indexOf("STUDENT_ID");
+  if (studentIdIndex === -1) {
+    return createResponse({ status: "error", message: "Invalid schema mapping." });
+  }
+  
+  let rowIndex = -1;
+  for (let i = 1; i < allValues.length; i++) {
+    if (String(allValues[i][studentIdIndex]) === String(record.STUDENT_ID)) {
+      rowIndex = i + 1; // 1-indexed for spreadsheet, plus 1 for header
+      break;
+    }
+  }
+  
+  if (rowIndex === -1) {
+    return createResponse({ status: "error", message: "Student record not found." });
+  }
+  
+  // Convert new base64 files if any
+  if (record.STUDENT_PHOTO_URL && record.STUDENT_PHOTO_URL.startsWith("data:")) {
+    record.STUDENT_PHOTO_URL = uploadCandidateBase64(record.STUDENT_PHOTO_URL, "STUDENT_" + record.STUDENT_NAME.replace(/\s+/g, "_") + "_" + record.STUDENT_ID);
+  }
+  
+  if (record.STUDENT_SIGNATURE_URL && record.STUDENT_SIGNATURE_URL.startsWith("data:")) {
+    record.STUDENT_SIGNATURE_URL = uploadCandidateBase64(record.STUDENT_SIGNATURE_URL, "SIGNATURE_" + record.STUDENT_NAME.replace(/\s+/g, "_") + "_" + record.STUDENT_ID);
+  }
+  
+  const rowDataToSave = [];
+  for (let j = 0; j < headers.length; j++) {
+    const col = headers[j];
+    // Keep old value if not provided in update, except when explicitly overwritten
+    if (record[col] !== undefined) {
+      rowDataToSave.push(record[col]);
+    } else {
+      rowDataToSave.push(allValues[rowIndex - 2][j]); 
+    }
+  }
+  
+  // Single bulk write back to the row
+  sheet.getRange(rowIndex, 1, 1, headers.length).setValues([rowDataToSave]);
+  
+  return createResponse({ status: "success", message: "Record updated successfully." });
+}
+
+/**
+ * ==========================================
+ * 🧘 MODULE 7: HIGH-PERFORMANCE CANDIDATE INGESTION
+ * ==========================================
+ */
+
+/**
+ * Parses files safely into Drive blobs and appends the fully populated candidate MasterRecord.
+ */
+function handleAddCandidate(candidate) {
+  const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
+  
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(CONFIG.MASTER_SHEET_NAME);
+  }
+  
+  // Auto-Healing Database: Ensure headers exist if sheet is completely blank
+  if (sheet.getLastRow() === 0 && sheet.getLastColumn() === 0) {
+    const headers = SHEET_TEMPLATES.MasterRecord;
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+  }
+  
+  // ⚡ OPTIMIZED MEMORY READS: Pull database rows into RAM in a single partitioning call
+  const dataRange = sheet.getDataRange();
+  const allValues = dataRange.getValues();
+  const headers = allValues[0];
+  
+  // Strict Multi-Column Duplicate Check
+  if (allValues.length > 1) {
+    const excludedFields = ['STUDENT_ID', 'TIMESTAMP', 'STUDENT_PHOTO_URL', 'STUDENT_SIGNATURE_URL'];
+    const fieldsToCheck = headers.filter(h => !excludedFields.includes(h));
+    
+    const isDuplicate = allValues.slice(1).some(function(row) {
+      return fieldsToCheck.every(function(field) {
+        const fieldIndex = headers.indexOf(field);
+        const rowVal = String(row[fieldIndex] || "").trim();
+        const candidateVal = String(candidate[field] || "").trim();
+        return rowVal === candidateVal;
+      });
+    });
+
+    if (isDuplicate) {
+      return createResponse({
+        status: "error",
+        message: "Duplicate student detected: An identical application with the same demographic and parental details already exists."
+      });
+    }
+  }
+
+  // 📂 FILE STREAMING: Convert base64 fields dynamically using our resilient processBase64File
+  candidate.STUDENT_PHOTO_URL = uploadCandidateBase64(candidate.STUDENT_PHOTO_URL, "STUDENT_" + candidate.STUDENT_NAME.replace(/\s+/g, "_") + "_" + candidate.STUDENT_ID);
+  candidate.STUDENT_SIGNATURE_URL = uploadCandidateBase64(candidate.STUDENT_SIGNATURE_URL, "SIGNATURE_" + candidate.STUDENT_NAME.replace(/\s+/g, "_") + "_" + candidate.STUDENT_ID);
+
+  // Map candidate parameters to schema header template exactly
+  const rowDataToSave = [];
+  for (let i = 0; i < headers.length; i++) {
+    const col = headers[i];
+    if (col === "TIMESTAMP") {
+      rowDataToSave.push(candidate.TIMESTAMP ? new Date(candidate.TIMESTAMP) : new Date());
+    } else {
+      rowDataToSave.push(candidate[col] !== undefined ? candidate[col] : "");
+    }
+  }
+  
+  // ⚡ HIGH-SPEED APPENDS: Single isolated write to Sheet
+  sheet.appendRow(rowDataToSave);
+  
+  return createResponse({
+    status: "success",
+    message: `Candidate ${candidate.STUDENT_NAME} enrolled successfully!`,
+    studentId: candidate.STUDENT_ID
+  });
+}
+
+/**
+ * Extracts mimetype and base64 fields, sending it to processBase64File
+ */
+function uploadCandidateBase64(base64Str, baseFilename) {
+  if (!base64Str || !base64Str.startsWith("data:")) {
+    return base64Str || ""; // Returns as-is if empty or already uploaded
+  }
+  
+  try {
+    const parts = base64Str.split(",");
+    const mimeType = parts[0].match(/data:([^;]+);/)[1];
+    const extension = mimeType.split("/")[1] || "png";
+    const filename = baseFilename + "." + extension;
+    
+    return processBase64File(filename, mimeType, parts[1]);
+  } catch (err) {
+    console.error("Base64 candidate upload failed: " + baseFilename, err);
+    return "Upload Error: " + err.toString();
+  }
+}
