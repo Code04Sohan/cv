@@ -137,12 +137,64 @@ window.DirectoryViewerModule = (function () {
                         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage all active enrollments</p>
                     </div>
                     
-                    <div class="w-full md:w-96 relative">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <div class="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+                        <button id="toggleFilterBtn" onclick="document.getElementById('filterPanel').classList.toggle('hidden')" class="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all font-bold text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                            Filter Options
+                        </button>
+                        <button id="downloadCsvBtn" class="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white transition-all font-bold text-sm shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Download Filtered List
+                        </button>
+                        <div class="relative w-full md:w-80 ml-0 md:ml-2">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            </div>
+                            <input type="text" id="dir_search_input" placeholder="Search by Name, ID, or Phone..."
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-inner">
                         </div>
-                        <input type="text" id="dir_search_input" placeholder="Search by Name, ID, or Phone..."
-                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-inner">
+                    </div>
+                </div>
+
+                <!-- Hidden Filter Panel -->
+                <div id="filterPanel" class="hidden grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-900/80 p-4 rounded-xl border border-slate-800 mb-4">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Enrolled Class</label>
+                        <select id="filter_course" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                            <option value="">All Classes</option>
+                            <option value="Teachers Training">Teachers Training</option>
+                            <option value="Diploma">Diploma</option>
+                            <option value="Yoga/Hula Hoopla/Karate/Meditation">Yoga/Hula Hoopla/Karate/Meditation</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Batch Days</label>
+                        <select id="filter_batch" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                            <option value="">All Batches</option>
+                            <option value="Evening: Mon-Wed-Fri">Evening: Mon-Wed-Fri</option>
+                            <option value="Evening: Sat-Sun-Wed">Evening: Sat-Sun-Wed</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Academic Session</label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="filter_sess_from" placeholder="From" min="2000" max="2099" class="w-full px-2 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm text-center">
+                            <span class="text-slate-500 font-bold">-</span>
+                            <input type="number" id="filter_sess_to" placeholder="To" min="2000" max="2099" class="w-full px-2 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm text-center">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gender</label>
+                        <select id="filter_gender" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                            <option value="">All Genders</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Admission Year</label>
+                        <input type="number" id="filter_admission_year" placeholder="e.g. 2024" min="2000" max="2099" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
                     </div>
                 </div>
 
@@ -152,6 +204,7 @@ window.DirectoryViewerModule = (function () {
                         <table class="w-full text-left border-collapse whitespace-nowrap min-w-[900px]">
                             <thead>
                                 <tr class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th class="px-6 py-4">Student ID</th>
                                     <th class="px-6 py-4">Roll No</th>
                                     <th class="px-6 py-4">Candidate Name</th>
                                     <th class="px-6 py-4">Enrolled Class</th>
@@ -162,7 +215,7 @@ window.DirectoryViewerModule = (function () {
                             <tbody id="dir_table_body" class="divide-y divide-slate-100 dark:divide-slate-800">
                                 <!-- Loading Skeleton -->
                                 <tr>
-                                    <td colspan="5" class="px-6 py-16 text-center text-slate-500">
+                                    <td colspan="6" class="px-6 py-16 text-center text-slate-500">
                                         <svg class="animate-spin h-8 w-8 mx-auto text-brand-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                         <p class="font-medium animate-pulse">Fetching records from cloud...</p>
                                     </td>
@@ -182,23 +235,79 @@ window.DirectoryViewerModule = (function () {
     // 🔍 SEARCH ENGINE (Client-Side RAM Filter)
     // =========================================
 
-    function attachSearchListener() {
-        const searchInput = document.getElementById('dir_search_input');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                const query = e.target.value.toLowerCase().trim();
-                if (query === '') {
-                    _filteredData = [..._directoryData];
-                } else {
-                    _filteredData = _directoryData.filter(row => {
-                        const name = (row.STUDENT_NAME || '').toLowerCase();
-                        const roll = (String(row.RL_NO || '')).toLowerCase();
-                        const phone = (String(row.STUDENT_MOBILE || '')).toLowerCase();
-                        return name.includes(query) || roll.includes(query) || phone.includes(query);
-                    });
+    function applyDirectoryFilters() {
+        const query = (document.getElementById('dir_search_input')?.value || '').toLowerCase().trim();
+        const fCourse = document.getElementById('filter_course')?.value || '';
+        const fBatch = document.getElementById('filter_batch')?.value || '';
+        const fSessFrom = document.getElementById('filter_sess_from')?.value || '';
+        const fSessTo = document.getElementById('filter_sess_to')?.value || '';
+        const fGender = document.getElementById('filter_gender')?.value || '';
+        const fYear = document.getElementById('filter_admission_year')?.value || '';
+
+        _filteredData = _directoryData.filter(row => {
+            // 1. Text Matcher (Name, Phone, ID)
+            let textMatch = true;
+            if (query !== '') {
+                const name = (row.STUDENT_NAME || '').toLowerCase();
+                const phone = (String(row.STUDENT_MOBILE || '')).toLowerCase();
+                const id = (String(row.STUDENT_ID || '')).toLowerCase();
+                textMatch = name.includes(query) || phone.includes(query) || id.includes(query);
+            }
+            if (!textMatch) return false;
+
+            // 2. Multi-Drop Parameters
+            if (fCourse && row.ENROLLED_COURSE !== fCourse) return false;
+            if (fBatch && row.CLASS_BATCH_DAYS !== fBatch) return false;
+            if (fGender && row.GENDER !== fGender) return false;
+
+            // 3. Academic Session (Split parsing)
+            if (fSessFrom || fSessTo) {
+                let sFrom = '', sTo = '';
+                if (row.SESSION && row.SESSION.includes('-')) {
+                    const parts = row.SESSION.split('-');
+                    sFrom = parts[0];
+                    sTo = parts[1];
                 }
-                renderTableBody();
-            });
+                if (fSessFrom && sFrom !== fSessFrom) return false;
+                if (fSessTo && sTo !== fSessTo) return false;
+            }
+
+            // 4. Strict Admission Year Evaluation
+            if (fYear) {
+                const doa = row.DATE_OF_ADMISSION || '';
+                const rowYear = doa.length >= 4 ? doa.substring(0, 4) : '';
+                if (rowYear !== fYear) return false;
+            }
+
+            return true;
+        });
+
+        window.currentFilteredDataset = [..._filteredData];
+        renderTableBody();
+    }
+
+    function attachSearchListener() {
+        const triggers = [
+            'dir_search_input',
+            'filter_course',
+            'filter_batch',
+            'filter_sess_from',
+            'filter_sess_to',
+            'filter_gender',
+            'filter_admission_year'
+        ];
+
+        triggers.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', applyDirectoryFilters);
+                el.addEventListener('change', applyDirectoryFilters);
+            }
+        });
+
+        const dlBtn = document.getElementById('downloadCsvBtn');
+        if (dlBtn) {
+            dlBtn.addEventListener('click', exportToCsv);
         }
     }
 
@@ -218,6 +327,7 @@ window.DirectoryViewerModule = (function () {
             if (res && res.status === "success" && Array.isArray(res.data)) {
                 _directoryData = res.data;
                 _filteredData = [..._directoryData];
+                window.currentFilteredDataset = [..._filteredData];
                 renderTableBody();
                 if (window.UIUtils) window.UIUtils.showToast(`Loaded ${_directoryData.length} records.`, "success");
             } else {
@@ -226,7 +336,7 @@ window.DirectoryViewerModule = (function () {
         } catch (err) {
             console.error("Fetch Directory Error:", err);
             if (window.UIUtils) window.UIUtils.showToast("Failed to load directory. " + err.message, "error");
-            document.getElementById('dir_table_body').innerHTML = `<tr><td colspan="5" class="px-6 py-8 text-center text-red-500 font-bold">Error loading directory.</td></tr>`;
+            document.getElementById('dir_table_body').innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-red-500 font-bold">Error loading directory.</td></tr>`;
         }
     }
 
@@ -239,7 +349,7 @@ window.DirectoryViewerModule = (function () {
         if (!tbody) return;
 
         if (_filteredData.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-slate-500 font-medium">No candidate records found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500 font-medium">No candidate records found.</td></tr>`;
             return;
         }
 
@@ -251,8 +361,11 @@ window.DirectoryViewerModule = (function () {
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group">
                     <td class="px-6 py-4">
                         <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-                            ${row.RL_NO || 'N/A'}
+                            ${row.STUDENT_ID || 'N/A'}
                         </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                        ${row.RL_NO || 'N/A'}
                     </td>
                     <td class="px-6 py-4">
                         <span class="font-bold text-slate-800 dark:text-white">${row.STUDENT_NAME || 'N/A'}</span>
@@ -982,6 +1095,74 @@ window.DirectoryViewerModule = (function () {
     }
 
     // =========================================
+    // 📥 CSV EXPORT ENGINE
+    // =========================================
+
+    function exportToCsv() {
+        const dataset = window.currentFilteredDataset || _directoryData;
+        if (!dataset || dataset.length === 0) {
+            if (window.UIUtils) window.UIUtils.showToast("No data available to export.", "error");
+            return;
+        }
+
+        // CSV Headers
+        const headers = [
+            "ID", 
+            "Roll No", 
+            "Candidate Name", 
+            "Enrolled Class", 
+            "Class Batch / Days", 
+            "Academic Session", 
+            "Gender", 
+            "Date of Admission"
+        ];
+
+        // CSV Rows mapping
+        const csvRows = [];
+        csvRows.push(headers.join(","));
+
+        dataset.forEach(row => {
+            // Clean Date Sanitization
+            const cleanDate = window.UIUtils && window.UIUtils.cleanDateTimeString 
+                ? window.UIUtils.cleanDateTimeString(row.DATE_OF_ADMISSION)
+                : row.DATE_OF_ADMISSION;
+
+            const values = [
+                row.STUDENT_ID || '',
+                row.RL_NO || '',
+                row.STUDENT_NAME || '',
+                row.ENROLLED_COURSE || '',
+                row.CLASS_BATCH_DAYS || '',
+                row.SESSION || '',
+                row.GENDER || '',
+                cleanDate || ''
+            ];
+
+            // Escape commas and quotes securely
+            const escapedValues = values.map(v => {
+                const str = String(v).replace(/"/g, '""');
+                return `"${str}"`;
+            });
+
+            csvRows.push(escapedValues.join(","));
+        });
+
+        const csvString = csvRows.join("\n");
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement("a");
+        a.href = url;
+        a.setAttribute("download", `BYTC_Directory_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(a);
+        a.click();
+        
+        // Instant Download Lifecycle cleanup
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // =========================================
     // 📦 PUBLIC API
     // =========================================
 
@@ -993,7 +1174,8 @@ window.DirectoryViewerModule = (function () {
         deleteRecord,
         printPDF,
         processEditAttachment,
-        getBase64FromDriveUrl
+        getBase64FromDriveUrl,
+        exportToCsv
     };
 
 })();
