@@ -132,6 +132,9 @@ function doPost(e) {
         
       case "EDIT_RECORD":
         return handleEditRecord(payload.record);
+
+      case "GET_IMAGE_BASE64":
+        return handleGetImageBase64(payload);
         
       default:
         return createResponse({ status: "error", message: "Unknown action." });
@@ -314,6 +317,67 @@ function handleEditRecord(record) {
   sheet.getRange(rowIndex, 1, 1, headers.length).setValues([rowDataToSave]);
   
   return createResponse({ status: "success", message: "Record updated successfully." });
+}
+
+/**
+ * ==========================================
+ * 🖼️ MODULE 6B: SERVER-SIDE CORS IMAGE PROXY
+ * ==========================================
+ * Bypasses browser CORS entirely by fetching Google Drive file blobs
+ * on the Apps Script server and returning them as Base64 data URIs.
+ */
+
+/**
+ * Extracts a Google Drive File ID from any common Drive URL pattern,
+ * fetches the file blob server-side, and returns a clean Base64 data URI.
+ * Supports: /file/d/ID, open?id=ID, id=ID&export, uc?id=ID, download?id=ID
+ */
+function handleGetImageBase64(payload) {
+  const url = payload.url;
+
+  if (!url || typeof url !== 'string' || url.trim() === '') {
+    return createResponse({ status: "error", message: "No URL provided." });
+  }
+
+  // If it's already a data URI, pass it straight back
+  if (url.startsWith('data:')) {
+    return createResponse({ status: "success", base64: url });
+  }
+
+  // Extract Google Drive File ID using multi-pattern regex matching
+  var fileId = null;
+  var patterns = [
+    /\/d\/([a-zA-Z0-9_-]+)/,         // /file/d/FILE_ID/
+    /[?&]id=([a-zA-Z0-9_-]+)/,        // ?id=FILE_ID or &id=FILE_ID
+    /\/open\?id=([a-zA-Z0-9_-]+)/,    // /open?id=FILE_ID
+    /uc\?.*id=([a-zA-Z0-9_-]+)/       // uc?export=download&id=FILE_ID
+  ];
+
+  for (var i = 0; i < patterns.length; i++) {
+    var match = url.match(patterns[i]);
+    if (match && match[1]) {
+      fileId = match[1];
+      break;
+    }
+  }
+
+  if (!fileId) {
+    return createResponse({ status: "error", message: "Could not extract Drive File ID from URL: " + url });
+  }
+
+  try {
+    var file = DriveApp.getFileById(fileId);
+    var blob = file.getBlob();
+    var mimeType = blob.getContentType() || file.getMimeType();
+    var bytes = blob.getBytes();
+    var base64String = Utilities.base64Encode(bytes);
+    var dataUri = "data:" + mimeType + ";base64," + base64String;
+
+    return createResponse({ status: "success", base64: dataUri });
+  } catch (err) {
+    console.error("CORS Proxy fetch failed for fileId: " + fileId, err);
+    return createResponse({ status: "error", message: "Drive file access error: " + err.toString() });
+  }
 }
 
 /**

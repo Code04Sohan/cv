@@ -9,6 +9,26 @@ window.UIUtils = (function() {
     'use strict';
 
     /**
+     * Date formatter for ISO strings (e.g. 2026-06-03T18:30:00.000Z -> 03-06-2026)
+     */
+    function cleanDateTimeString(isoString) {
+        if (!isoString) return 'N/A';
+        try {
+            const dateObj = new Date(isoString);
+            if (isNaN(dateObj.getTime())) return isoString; // Fallback
+
+            // Formats to DD-MM-YYYY
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const year = dateObj.getFullYear();
+
+            return `${day}-${month}-${year}`;
+        } catch (e) {
+            return isoString;
+        }
+    }
+
+    /**
      * Toast Notification Engine
      * @param {string} message - The message to display
      * @param {string} type - 'success', 'error', or 'info'
@@ -90,6 +110,7 @@ window.UIUtils = (function() {
         showToast,
         openModal,
         closeModal,
-        fetchFromEngine
+        fetchFromEngine,
+        cleanDateTimeString
     };
 })();

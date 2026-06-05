@@ -2,69 +2,66 @@
  * ==========================================
  * 🖨️ PDF GENERATOR UTILITY (pdfGenerator.js)
  * ==========================================
- * Refined for strict 1-page structural flow and accurate bounds tracking.
+ * FETCH-PRINT-FLUSH Architecture:
+ * 1. FETCH  — Retrieves photo & signature via server-side CORS proxy (GET_IMAGE_BASE64)
+ * 2. PRINT  — Bakes resolved Base64 data into the jsPDF layout
+ * 3. FLUSH  — Immediately nulls all image variables post-save for browser GC
+ *
+ * This completely eliminates client-side CORS errors by routing all
+ * Google Drive blob reads through the Apps Script backend.
  */
 window.PDFGenerator = (function () {
     'use strict';
 
     /**
-     * Resolves a Google Drive share/view URL to a direct binary stream URL.
+     * ==========================================
+     * 🔗 SERVER-SIDE IMAGE PROXY FETCHER
+     * ==========================================
+     * Calls the Code.gs GET_IMAGE_BASE64 endpoint to retrieve Drive file
+     * blobs as Base64 data URIs. Runs entirely on Google's servers,
+     * completely bypassing browser CORS restrictions.
+     *
+     * @param {string} url — Raw Drive URL from the spreadsheet record
+     * @returns {Promise<string|null>} — Base64 data URI or null on failure
      */
-    function resolveDriveUrl(url) {
-        if (!url || typeof url !== 'string') return '';
+    async function fetchImageViaProxy(url) {
+        if (!url || typeof url !== 'string' || url.trim() === '') return null;
+        if (url.startsWith('Rich Media Stripped')) return null;
+
+        // Already a data URI — pass through immediately (no proxy needed)
         if (url.startsWith('data:')) return url;
-        const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/) || url.match(/[?&]id=([a-zA-Z0-9-_]+)/);
-        if (match && match[1]) {
-            return `https://docs.google.com/uc?export=download&id=${match[1]}`;
+
+        // Route through the server-side CORS proxy
+        try {
+            const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
+            const response = await window.UIUtils.fetchFromEngine({
+                action: "GET_IMAGE_BASE64",
+                url: url,
+                token: token
+            });
+
+            if (response && response.status === "success" && response.base64) {
+                return response.base64;
+            } else {
+                console.warn("[PDF Proxy] Server returned non-success for URL:", url, response?.message);
+                return null;
+            }
+        } catch (err) {
+            console.warn("[PDF Proxy] Network exception for URL:", url, err);
+            return null;
         }
-        return url;
     }
 
     /**
-     * Fetches any image URL (including resolved Drive stream links) as a Blob,
-     * converts it to a Base64 data URI string. Bypasses CORS taint.
+     * ==========================================
+     * 📄 FETCH-PRINT-FLUSH PDF PIPELINE
+     * ==========================================
+     * Orchestrates the complete PDF generation lifecycle:
+     *   1. Fetches all image assets via the server-side proxy
+     *   2. Constructs and renders the full PDF document
+     *   3. Triggers download via pdf.save()
+     *   4. Immediately flushes all Base64 strings from RAM
      */
-    async function getBase64FromDriveUrl(url) {
-        if (!url || typeof url !== 'string' || url.trim() === '') return null;
-        if (url.startsWith('Rich Media Stripped')) return null;
-        if (url.startsWith('data:')) return url;
-
-        const streamUrl = resolveDriveUrl(url);
-
-        try {
-            const response = await fetch(streamUrl, { mode: 'cors' });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const blob = await response.blob();
-            return await new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = () => resolve(null);
-                reader.readAsDataURL(blob);
-            });
-        } catch (fetchErr) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.crossOrigin = 'Anonymous';
-                img.onload = () => {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(0, 0, img.width, img.height);
-                        ctx.drawImage(img, 0, 0);
-                        resolve(canvas.toDataURL('image/jpeg', 0.85));
-                    } catch (e) {
-                        resolve(null);
-                    }
-                };
-                img.onerror = () => resolve(null);
-                img.src = streamUrl;
-            });
-        }
-    }
-
     async function createApplicationForm(data) {
         if (!window.jspdf || !window.jspdf.jsPDF) {
             console.error("jsPDF is not loaded");
@@ -72,42 +69,68 @@ window.PDFGenerator = (function () {
             return;
         }
 
-        if (window.UIUtils) window.UIUtils.showToast("Generating Professional PDF Document...", "info");
+        if (window.UIUtils) window.UIUtils.showToast("Fetching images from cloud & generating PDF...", "info");
 
-        // The very first step: dynamically resolve ALL image assets
+        // ==========================================
+        // PHASE 1: FETCH — Resolve all image assets via server-side proxy
+        // ==========================================
         let CENTER_LOGO_BASE64 = null;
         let STUDENT_PHOTO_BASE64 = null;
         let STUDENT_SIGNATURE_BASE64 = null;
-        
+
         try {
+            // Logo is a local asset — load it directly via fetch blob (no CORS issue)
+            const logoPromise = (async () => {
+                try {
+                    const res = await fetch('./resources/logo_babla.jpeg');
+                    if (!res.ok) return null;
+                    const blob = await res.blob();
+                    return await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.onerror = () => resolve(null);
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (e) {
+                    return null;
+                }
+            })();
+
+            // Photo & Signature — routed through the CORS proxy backend
             [CENTER_LOGO_BASE64, STUDENT_PHOTO_BASE64, STUDENT_SIGNATURE_BASE64] = await Promise.all([
-                getBase64FromDriveUrl('./resources/logo_babla.jpeg'),
-                getBase64FromDriveUrl(data.STUDENT_PHOTO_URL),
-                getBase64FromDriveUrl(data.STUDENT_SIGNATURE_URL)
+                logoPromise,
+                fetchImageViaProxy(data.STUDENT_PHOTO_URL),
+                fetchImageViaProxy(data.STUDENT_SIGNATURE_URL)
             ]);
         } catch (e) {
-            console.warn("Image resolution failed gracefully:", e);
+            console.warn("[PDF Fetch Phase] Image resolution failed gracefully:", e);
         }
 
+        // ==========================================
+        // PHASE 2: PRINT — Construct the full PDF document
+        // ==========================================
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('p', 'mm', 'a4');
 
         const pageWidth = 210;
-        // Calculate the absolute bottom of the page
         const pageHeight = doc.internal.pageSize.height;
         const margin = 15;
         let currentY = margin;
 
-        // ==========================================
-        // 2. Header Design (Fixed Positioning)
-        // ==========================================
+        // ------------------------------------------
+        // HEADER BLOCK
+        // ------------------------------------------
 
-        // Render CENTER_LOGO_BASE64 in the top-left corner
+        // Center logo in the top-left corner
         if (CENTER_LOGO_BASE64 && CENTER_LOGO_BASE64.startsWith('data:image')) {
-            doc.addImage(CENTER_LOGO_BASE64, 'JPEG', margin, currentY, 25, 25);
+            try {
+                doc.addImage(CENTER_LOGO_BASE64, 'JPEG', margin, currentY, 25, 25);
+            } catch (err) {
+                console.warn("[PDF] Logo inject failed:", err);
+            }
         }
 
-        // Center-align the text block
+        // Center-aligned institution text
         const headerCenterX = pageWidth / 2;
 
         doc.setFont("helvetica", "bold");
@@ -125,7 +148,7 @@ window.PDFGenerator = (function () {
         doc.text("Email: bablayogatrainingcenter@gmail.com", headerCenterX, currentY + 20, { align: 'center' });
         doc.text("Cont. 7076280550 (Call/Wp), 8158027894 (Call)", headerCenterX, currentY + 24, { align: 'center' });
 
-        // Candidate Photo: Reserve a fixed area in the top-right corner
+        // Candidate Photo: Fixed area in top-right corner
         const photoW = 30;
         const photoH = 40;
         const photoX = pageWidth - margin - photoW;
@@ -138,7 +161,7 @@ window.PDFGenerator = (function () {
             try {
                 doc.addImage(STUDENT_PHOTO_BASE64, 'JPEG', photoX + 1, currentY + 1, photoW - 2, photoH - 2);
             } catch (err) {
-                console.warn("Failed to inject student photo:", err);
+                console.warn("[PDF] Student photo inject failed:", err);
             }
         } else {
             doc.setFontSize(8);
@@ -154,9 +177,9 @@ window.PDFGenerator = (function () {
         doc.line(margin, currentY, pageWidth - margin, currentY);
         currentY += 8;
 
-        // ==========================================
-        // 3. Body Design (Strict 1-Page Layout)
-        // ==========================================
+        // ------------------------------------------
+        // BODY: Admission Details Grid
+        // ------------------------------------------
 
         doc.setFont("helvetica", "bold");
         doc.setFontSize(13);
@@ -180,7 +203,7 @@ window.PDFGenerator = (function () {
             doc.setFont("helvetica", "bold");
             doc.setTextColor(100, 116, 139);
 
-            let startY = Math.max(col1Y, col2Y); // synchronize row starts
+            let startY = Math.max(col1Y, col2Y);
             let newCol1Y = startY;
             let newCol2Y = startY;
 
@@ -222,9 +245,11 @@ window.PDFGenerator = (function () {
             col2Y = startY + 5;
         }
 
-        // Output fixed data perfectly spaced
+        // Data rows
+        const safeDateOfAdmission = window.UIUtils ? window.UIUtils.cleanDateTimeString(data.DATE_OF_ADMISSION) : data.DATE_OF_ADMISSION;
+        
         renderRow("Student ID", data.STUDENT_ID, "Roll No", data.RL_NO);
-        renderRow("Session", data.SESSION, "Date of Admission", data.DATE_OF_ADMISSION);
+        renderRow("Session", data.SESSION, "Date of Admission", safeDateOfAdmission);
         renderRow("Class", data.ENROLLED_COURSE, "Class Batch", data.CLASS_BATCH_DAYS);
         renderDivider();
 
@@ -232,14 +257,14 @@ window.PDFGenerator = (function () {
         renderRow("Gender", data.GENDER, "Blood Group", data.BLOOD_GROUP);
         renderRow("Religion", data.RELIGION, "Category", data.CATEGORY);
         renderRow("Aadhar No", data.STUDENT_AADHAR, "Mobile No", data.STUDENT_MOBILE);
+        renderRow("Contact Email", data.CONTACT_EMAIL, null, null, true);
+        renderRow("Home Address", data.HOME_ADDRESS, null, null, true);
         renderRow("Disability Notes", data.PHYSICAL_DISABILITY, null, null, true);
         renderDivider();
 
         renderRow("Father's Name", data.FATHER_NAME, "Father's Mobile", data.FATHER_MOBILE);
         renderRow("Mother's Name", data.MOTHER_NAME, "Mother's Mobile", data.MOTHER_MOBILE);
         renderRow("Guardian", data.GUARDIAN_RELATION + (data.GUARDIAN_NAME ? ' (' + data.GUARDIAN_NAME + ')' : ''), "Guardian Mob", data.GUARDIAN_MOBILE);
-        renderRow("Contact Email", data.CONTACT_EMAIL, null, null, true);
-        renderRow("Home Address", data.HOME_ADDRESS, null, null, true);
         renderDivider();
 
         renderRow("Payable Amount", "Rs. " + (data.PAYABLE_AMOUNT || "0"), "Is Fee Paid", data.IS_FEE_PAID);
@@ -247,9 +272,9 @@ window.PDFGenerator = (function () {
 
         let finalGridY = Math.max(col1Y, col2Y);
 
-        // ==========================================
-        // 4. Footer & Declarations Adjustments
-        // ==========================================
+        // ------------------------------------------
+        // DECLARATIONS
+        // ------------------------------------------
 
         let cursorY = finalGridY + 15;
 
@@ -272,22 +297,27 @@ window.PDFGenerator = (function () {
         const splitDec2 = doc.splitTextToSize(dec2, 180);
         doc.text(splitDec2, 15, dec2Offset);
 
-        // Fixed Footer Base (Bottom Left / Bottom Right)
-        const finishPDF = () => {
-            const sanitizedName = (data.STUDENT_NAME || "Candidate").replace(/[^a-zA-Z0-9]/g, '_');
-            doc.save(`BYTC_Admission_${sanitizedName}.pdf`);
-            if (window.UIUtils) window.UIUtils.showToast("Professional PDF Generated Successfully!", "success");
-        };
+        // ------------------------------------------
+        // FOOTER: QR Code + Signature + Save
+        // ------------------------------------------
 
+        /**
+         * Final render step: places QR code and signature, then triggers
+         * the FLUSH phase to release all image memory.
+         */
         const renderSignaturesAndSave = (qrImage) => {
-            // QR Code: Lock strictly to the bottom-left corner
+            // QR Code: Bottom-left corner
             const qrX = 15;
             const qrY = pageHeight - 45;
             if (qrImage) {
-                doc.addImage(qrImage, 'PNG', qrX, qrY, 24, 24);
+                try {
+                    doc.addImage(qrImage, 'PNG', qrX, qrY, 24, 24);
+                } catch (err) {
+                    console.warn("[PDF] QR inject failed:", err);
+                }
             }
 
-            // Signature Image & Date: Lock strictly to the bottom-right corner
+            // Signature Image: Bottom-right corner
             const signX = 140;
             const signY = pageHeight - 40;
             const signWidth = 40;
@@ -297,7 +327,7 @@ window.PDFGenerator = (function () {
                 try {
                     doc.addImage(STUDENT_SIGNATURE_BASE64, 'JPEG', signX, signY - signHeight - 2, signWidth, signHeight);
                 } catch (err) {
-                    console.warn("Signature inject failed silently:", err);
+                    console.warn("[PDF] Signature inject failed:", err);
                 }
             }
 
@@ -311,9 +341,27 @@ window.PDFGenerator = (function () {
             doc.text(`Date: ${new Date().toLocaleDateString()}`, signX, signY + 5);
 
             doc.setFont("helvetica", "bold");
-            doc.text("Candidate Signature", signX, signY + 9);
+            doc.text("Candidate/Guardian Signature", signX, signY + 9);
 
-            finishPDF();
+            // ==========================================
+            // PHASE 2B: SAVE — Trigger PDF download
+            // ==========================================
+            const sanitizedName = (data.STUDENT_NAME || "Candidate").replace(/[^a-zA-Z0-9]/g, '_');
+            doc.save(`BYTC_Admission_${sanitizedName}.pdf`);
+
+            // ==========================================
+            // PHASE 3: FLUSH — Immediately release all Base64 image
+            // strings from browser RAM to trigger native GC
+            // ==========================================
+            CENTER_LOGO_BASE64 = null;
+            STUDENT_PHOTO_BASE64 = null;
+            STUDENT_SIGNATURE_BASE64 = null;
+            if (qrImage) {
+                qrImage = null;
+            }
+
+            if (window.UIUtils) window.UIUtils.showToast("Professional PDF Generated Successfully!", "success");
+            console.debug("[PDF Flush] All image buffers released from RAM.");
         };
 
         // Generate QR Code securely

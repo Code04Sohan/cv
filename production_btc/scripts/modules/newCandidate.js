@@ -297,15 +297,13 @@ window.NewCandidateModule = (function () {
                                     <input type="text" id="field_rl_no" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
-                                <div class="space-y-1.5 flex gap-2">
-                                    <div class="flex-1">
-                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Session From</label>
-                                        <input type="number" id="field_session_from" required min="2000" max="2099" placeholder="YYYY"
+                                <div class="space-y-1.5">
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Academic Session</label>
+                                    <div class="flex items-center gap-2">
+                                        <input type="number" id="field_session_from" required min="2000" max="2099" placeholder="From"
                                             class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
-                                    </div>
-                                    <div class="flex-1">
-                                        <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Session To</label>
-                                        <input type="number" id="field_session_to" required min="2000" max="2099" placeholder="YYYY"
+                                        <span class="text-slate-400 dark:text-slate-500 font-bold text-sm shrink-0">–</span>
+                                        <input type="number" id="field_session_to" required min="2000" max="2099" placeholder="To"
                                             class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                 </div>
@@ -554,9 +552,9 @@ window.NewCandidateModule = (function () {
                                     </div>
                                 </div>
 
-                                <!-- Student Signature -->
+                                <!-- Candidate/Parent/Guardian Signature -->
                                 <div class="space-y-2 flex flex-col">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Signature</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Candidate/Parent/Guardian Signature</label>
                                     <div class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-900/30 text-center relative overflow-hidden group min-h-[160px]">
                                         <input type="file" id="file_student_signature" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer z-10" onchange="window.NewCandidateModule.processAttachment(this, 'studentSignature')">
                                         <div id="preview_studentSignature" class="hidden absolute inset-0 bg-slate-900 z-20">
