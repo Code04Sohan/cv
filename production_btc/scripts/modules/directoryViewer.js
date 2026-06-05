@@ -614,6 +614,10 @@ window.DirectoryViewerModule = (function () {
         const photoViewUrl = data.STUDENT_PHOTO_URL || '';
         const signViewUrl = data.STUDENT_SIGNATURE_URL || '';
 
+        // Safe ISO Date parsing for HTML5 <input type="date"> compatibility
+        const safeDoa = data.DATE_OF_ADMISSION ? data.DATE_OF_ADMISSION.split('T')[0] : '';
+        const safeDob = data.DOB ? data.DOB.split('T')[0] : '';
+
         const modalHtml = `
             <div id="dir_edit_modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
                 <div class="bg-white dark:bg-slate-900 w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800">
@@ -640,7 +644,7 @@ window.DirectoryViewerModule = (function () {
                                 </div>
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-500 uppercase">Date of Admission</label>
-                                    <input type="date" id="edit_doa" value="${data.DATE_OF_ADMISSION || ''}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                                    <input type="date" id="edit_doa" value="${safeDoa}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all">
                                 </div>
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-500 uppercase">Enrolled Class</label>
@@ -687,7 +691,7 @@ window.DirectoryViewerModule = (function () {
                             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-500 uppercase">Date of Birth</label>
-                                    <input type="date" id="edit_dob" value="${data.DOB || ''}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all">
+                                    <input type="date" id="edit_dob" value="${safeDob}" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all">
                                 </div>
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-bold text-slate-500 uppercase">Gender</label>
