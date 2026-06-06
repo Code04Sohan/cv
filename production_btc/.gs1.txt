@@ -101,11 +101,21 @@ function handleLogin(payload) {
  */
 function doPost(e) {
   try {
-    if (!e.postData || !e.postData.contents) {
-        return createResponse({ status: "error", message: "Empty payload." });
+    let payload;
+    if (e.postData && e.postData.contents) {
+      try {
+        payload = JSON.parse(e.postData.contents);
+      } catch (err) {
+        payload = e.parameter;
+      }
+    } else {
+      payload = e.parameter;
     }
     
-    const payload = JSON.parse(e.postData.contents);
+    if (!payload || !payload.action) {
+        return createResponse({ status: "error", message: "Empty or invalid payload." });
+    }
+    
     const action = payload.action;
 
     // A. PUBLIC ROUTES (No auth required)
@@ -135,6 +145,9 @@ function doPost(e) {
 
       case "GET_IMAGE_BASE64":
         return handleGetImageBase64(payload);
+
+      case "DELETE_RECORD":
+        return handleDeleteRecord(payload);
         
       default:
         return createResponse({ status: "error", message: "Unknown action." });
@@ -146,7 +159,45 @@ function doPost(e) {
 
 /**
  * ==========================================
- * 🚨 MODULE 4: OTP & SECURITY OVERRIDE
+ * 🗑️ RECORD DELETION ENGINE
+ * ==========================================
+ */
+function handleDeleteRecord(payload) {
+  try {
+    var spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
+    
+    if (!sheet) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Error: Database sheet not found." })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var studentId = String(payload.STUDENT_ID);
+    
+    // Column Isolation Guard
+    var idColumnRange = sheet.getRange(1, 1, sheet.getLastRow(), 1);
+    var finder = idColumnRange.createTextFinder(studentId).matchEntireCell(true);
+    var results = finder.findAll();
+
+    // Validation Gate
+    if (results.length === 0) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Error: Student ID not found in database." })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Execution Block
+    var targetRow = results[0].getRow();
+    sheet.deleteRow(targetRow);
+
+    // MIME Format Output
+    var output = { success: true, message: "Record permanently deleted." };
+    return ContentService.createTextOutput(JSON.stringify(output)).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Exception: " + error.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * ==========================================
+ * 📦 MODULE 4: CORE LOGIC APIS
  * ==========================================
  */
 const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes

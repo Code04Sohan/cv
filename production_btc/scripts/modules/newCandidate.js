@@ -252,22 +252,28 @@ window.NewCandidateModule = (function () {
                     
                     <!-- Recreated Clean Admission Registry Section Header -->
                     <div class="relative bg-white dark:bg-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200 dark:border-slate-700/80 mb-8 transition-all duration-300 overflow-hidden shrink-0">
-                        <!-- Subtle brand background accent glows (premium dark-mode halos) -->
                         <div class="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-brand-500/5 dark:bg-brand-500/10 blur-3xl pointer-events-none"></div>
                         <div class="absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-indigo-500/5 dark:bg-indigo-500/10 blur-3xl pointer-events-none"></div>
                         
-                        <div class="flex items-center gap-4 relative z-10">
+                        <div class="flex items-center gap-4 relative z-10 mb-6">
                             <div class="w-12 h-12 bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
                                 <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
                                 </svg>
                             </div>
-                            <div class="space-y-1">
-                                <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white leading-tight">Admission Registry</h1>
-                                <p class="text-slate-500 dark:text-slate-400 font-medium text-xs sm:text-sm max-w-2xl leading-relaxed">
-                                    Queue and transmit yoga candidate admissions silently. High-performance non-blocking data layers secure all attachments locally in RAM prior to sheet replication.
-                                </p>
-                            </div>
+                            <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white leading-tight">Admission Registry</h1>
+                        </div>
+
+                        <div class="bg-emerald-500/5 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300/90 p-4 rounded-xl mb-2 text-sm leading-relaxed relative z-10">
+                            <h3 class="font-bold mb-2 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                📝 Enrollment Assistant Tips
+                            </h3>
+                            <ul class="list-disc pl-5 space-y-1">
+                                <li>Fields marked with a red asterisk (<span class="text-red-500 font-bold">*</span>) will help us complete the candidate's core profile setup.</li>
+                                <li>To make sure your student documents attach securely to our cloud ledger, please keep this window open until your sync queue indicator turns a steady green and displays a success notification.</li>
+                                <li><strong>Tip:</strong> Reviewing your sync status panel before logging out at the end of your shift keeps everything running optimally!</li>
+                            </ul>
                         </div>
                     </div>
 
@@ -288,17 +294,17 @@ window.NewCandidateModule = (function () {
                             
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Student ID (Auto)</label>
+                                    <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Student ID (Auto)<span class="text-red-500 ml-1">*</span></label>
                                     <input type="text" id="field_student_id" required readonly value="${generateMockID()}"
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-slate-500 dark:text-slate-400 outline-none cursor-not-allowed">
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Roll Number</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Roll Number<span class="text-red-500 ml-1">*</span></label>
                                     <input type="text" id="field_rl_no" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Academic Session</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Academic Session<span class="text-red-500 ml-1">*</span></label>
                                     <div class="flex items-center gap-2">
                                         <input type="number" id="field_session_from" required min="2000" max="2099" placeholder="From"
                                             class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
@@ -308,12 +314,12 @@ window.NewCandidateModule = (function () {
                                     </div>
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Date of Admission</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Date of Admission<span class="text-red-500 ml-1">*</span></label>
                                     <input type="date" id="field_date_of_admission" required value="${new Date().toISOString().split('T')[0]}"
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Enrolled Class</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Enrolled Class<span class="text-red-500 ml-1">*</span></label>
                                     <select id="field_enrolled_course" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Select Class</option>
@@ -323,7 +329,7 @@ window.NewCandidateModule = (function () {
                                     </select>
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Class Batch & Days</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Class Batch & Days<span class="text-red-500 ml-1">*</span></label>
                                     <select id="field_class_batch_days" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Choose Schedule</option>
@@ -348,18 +354,18 @@ window.NewCandidateModule = (function () {
                             
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div class="space-y-1.5 md:col-span-2">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Candidate Full Name</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Candidate Full Name<span class="text-red-500 ml-1">*</span></label>
                                     <input type="text" id="field_student_name" required placeholder="Enter student full name"
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Date of Birth</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Date of Birth<span class="text-red-500 ml-1">*</span></label>
                                     <input type="date" id="field_dob" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
                                 
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Gender</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Gender<span class="text-red-500 ml-1">*</span></label>
                                     <select id="field_gender" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Select Gender</option>
@@ -369,8 +375,8 @@ window.NewCandidateModule = (function () {
                                     </select>
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Blood Group</label>
-                                    <select id="field_blood_group" required
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Blood Group<span class="text-slate-400 font-normal ml-1">(Optional)</span></label>
+                                    <select id="field_blood_group"
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Select Blood Group</option>
                                         <option value="A+">A+</option>
@@ -384,7 +390,7 @@ window.NewCandidateModule = (function () {
                                     </select>
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Religion</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Religion<span class="text-red-500 ml-1">*</span></label>
                                     <select id="field_religion" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Select Religion</option>
@@ -395,13 +401,13 @@ window.NewCandidateModule = (function () {
                                 </div>
 
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Aadhar Card No</label>
-                                    <input type="text" id="field_student_aadhar" required placeholder="0000 0000 0000" maxlength="14"
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Aadhar Card No<span class="text-slate-400 font-normal ml-1">(Optional)</span></label>
+                                    <input type="text" id="field_student_aadhar" placeholder="0000 0000 0000" maxlength="14"
                                         oninput="window.NewCandidateModule.formatAadhar(this)"
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Category</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Category<span class="text-red-500 ml-1">*</span></label>
                                     <select id="field_category" required
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                         <option value="" disabled selected>Choose Category</option>
@@ -413,13 +419,13 @@ window.NewCandidateModule = (function () {
                                     </select>
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Mobile Number</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Mobile Number<span class="text-red-500 ml-1">*</span></label>
                                     <input type="tel" id="field_student_mobile" required placeholder="9876543210" maxlength="10"
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
                                 
                                 <div class="space-y-1.5 md:col-span-3">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Physical Disability / Medical Notes (If Any)</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Physical Disability / Medical Notes (If Any)<span class="text-slate-400 font-normal ml-1">(Optional)</span></label>
                                     <textarea id="field_physical_disability" rows="2" placeholder="Describe any existing physical disabilities, chronic pains, allergies or medical notes..."
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all resize-none"></textarea>
                                 </div>
@@ -445,12 +451,12 @@ window.NewCandidateModule = (function () {
                                 </h3>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Name</label>
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Name<span class="text-red-500 ml-1">*</span></label>
                                         <input type="text" id="field_father_name" required placeholder="Full Name" oninput="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Mobile</label>
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Father's Mobile<span class="text-red-500 ml-1">*</span></label>
                                         <input type="tel" id="field_father_mobile" required placeholder="10 Digit Number" maxlength="10" oninput="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
@@ -464,12 +470,12 @@ window.NewCandidateModule = (function () {
                                 </h3>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Name</label>
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Name<span class="text-red-500 ml-1">*</span></label>
                                         <input type="text" id="field_mother_name" required placeholder="Full Name" oninput="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Mobile</label>
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Mother's Mobile<span class="text-red-500 ml-1">*</span></label>
                                         <input type="tel" id="field_mother_mobile" required placeholder="10 Digit Number" maxlength="10" oninput="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
@@ -483,7 +489,7 @@ window.NewCandidateModule = (function () {
                                 </h3>
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Relation</label>
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Relation<span class="text-red-500 ml-1">*</span></label>
                                         <select id="field_guardian_relation" required onchange="window.NewCandidateModule.handleGuardianChange()"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                             <option value="" disabled selected>Select Guardian</option>
@@ -493,12 +499,12 @@ window.NewCandidateModule = (function () {
                                         </select>
                                     </div>
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Name</label>
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Name<span class="text-red-500 ml-1">*</span></label>
                                         <input type="text" id="field_guardian_name" required placeholder="Full Name"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
                                     <div class="space-y-1.5">
-                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Mobile</label>
+                                        <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Guardian Mobile<span class="text-red-500 ml-1">*</span></label>
                                         <input type="tel" id="field_guardian_mobile" required placeholder="10 Digit Number" maxlength="10"
                                             class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                     </div>
@@ -507,12 +513,12 @@ window.NewCandidateModule = (function () {
 
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div class="space-y-1.5 md:col-span-2">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Full Residential Address</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Full Residential Address<span class="text-red-500 ml-1">*</span></label>
                                     <textarea id="field_home_address" required rows="2" placeholder="Full residential physical address for records lookup..."
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all resize-none"></textarea>
                                 </div>
                                 <div class="space-y-1.5">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Contact Email ID</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Contact Email ID<span class="text-red-500 ml-1">*</span></label>
                                     <input type="email" id="field_contact_email" required placeholder="student.parent@gmail.com"
                                         class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all">
                                 </div>
@@ -535,7 +541,7 @@ window.NewCandidateModule = (function () {
                                 
                                 <!-- Student Photo -->
                                 <div class="space-y-2 flex flex-col">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Photo</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Student Photo<span class="text-slate-400 font-normal ml-1">(Optional)</span></label>
                                     <div class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-900/30 text-center relative overflow-hidden group min-h-[160px]">
                                         <input type="file" id="file_student_photo" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer z-10" onchange="window.NewCandidateModule.processAttachment(this, 'studentPhoto')">
                                         <div id="preview_studentPhoto" class="hidden absolute inset-0 bg-slate-900 z-20">
@@ -554,7 +560,7 @@ window.NewCandidateModule = (function () {
 
                                 <!-- Candidate/Parent/Guardian Signature -->
                                 <div class="space-y-2 flex flex-col">
-                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Candidate/Parent/Guardian Signature</label>
+                                    <label class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Candidate/Parent/Guardian Signature<span class="text-slate-400 font-normal ml-1">(Optional)</span></label>
                                     <div class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-900/30 text-center relative overflow-hidden group min-h-[160px]">
                                         <input type="file" id="file_student_signature" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer z-10" onchange="window.NewCandidateModule.processAttachment(this, 'studentSignature')">
                                         <div id="preview_studentSignature" class="hidden absolute inset-0 bg-slate-900 z-20">
@@ -984,16 +990,25 @@ window.NewCandidateModule = (function () {
         const nameVal = document.getElementById('field_student_name').value.trim();
         const aadharVal = document.getElementById('field_student_aadhar').value.replace(/\s+/g, '');
         const mobileVal = document.getElementById('field_student_mobile').value.trim();
+        const sessionFrom = document.getElementById('field_session_from').value.trim();
+        const sessionTo = document.getElementById('field_session_to').value.trim();
 
         // High reliability validation patterns
         if (!nameVal) {
             return window.UIUtils.showToast("Candidate Full Name is required.", "error");
         }
-        if (aadharVal.length !== 12 || isNaN(aadharVal)) {
+        // Bypass optional Aadhaar check if empty
+        if (aadharVal && (aadharVal.length !== 12 || isNaN(aadharVal))) {
             return window.UIUtils.showToast("Student Aadhar must represent a clean 12-digit record.", "error");
         }
         if (mobileVal.length !== 10 || isNaN(mobileVal)) {
             return window.UIUtils.showToast("Student Mobile must represent a clean 10-digit number.", "error");
+        }
+        
+        // Strict numerical regex validation check for Session Years
+        const yearRegex = /^\d{4}$/;
+        if (!yearRegex.test(sessionFrom) || !yearRegex.test(sessionTo)) {
+            return window.UIUtils.showToast("Please enter a valid 4-digit calendar year (e.g., 2026) for the academic session fields.", "error");
         }
 
         // Assemble unified MasterRecord mapping payload
@@ -1007,14 +1022,14 @@ window.NewCandidateModule = (function () {
             STUDENT_NAME: nameVal,
             DOB: document.getElementById('field_dob').value,
             GENDER: document.getElementById('field_gender').value,
-            BLOOD_GROUP: document.getElementById('field_blood_group').value,
+            BLOOD_GROUP: document.getElementById('field_blood_group').value || "N/A",
             RELIGION: document.getElementById('field_religion').value,
-            STUDENT_AADHAR: aadharVal,
+            STUDENT_AADHAR: aadharVal || "N/A",
             CATEGORY: document.getElementById('field_category').value,
             STUDENT_MOBILE: mobileVal,
             CONTACT_EMAIL: document.getElementById('field_contact_email').value.trim(),
             HOME_ADDRESS: document.getElementById('field_home_address').value.trim(),
-            PHYSICAL_DISABILITY: document.getElementById('field_physical_disability').value.trim(),
+            PHYSICAL_DISABILITY: document.getElementById('field_physical_disability').value.trim() || "N/A",
             FATHER_NAME: document.getElementById('field_father_name').value.trim(),
             FATHER_MOBILE: document.getElementById('field_father_mobile').value.trim(),
             MOTHER_NAME: document.getElementById('field_mother_name').value.trim(),
@@ -1029,8 +1044,8 @@ window.NewCandidateModule = (function () {
             PAYMENT_MODE: document.getElementById('field_payment_mode').value,
             TXN_ID: document.getElementById('field_txn_id').value.trim(),
             // Capture Base64 streams securely from internal state
-            STUDENT_PHOTO_URL: state.studentPhoto,
-            STUDENT_SIGNATURE_URL: state.studentSignature,
+            STUDENT_PHOTO_URL: state.studentPhoto || "N/A",
+            STUDENT_SIGNATURE_URL: state.studentSignature || "N/A",
             TIMESTAMP: new Date().toISOString()
         };
 
@@ -1171,12 +1186,12 @@ window.NewCandidateModule = (function () {
             STUDENT_NAME: nameVal,
             DOB: document.getElementById('field_dob').value,
             GENDER: document.getElementById('field_gender').value,
-            BLOOD_GROUP: document.getElementById('field_blood_group').value,
+            BLOOD_GROUP: document.getElementById('field_blood_group').value || "N/A",
             RELIGION: document.getElementById('field_religion').value,
-            STUDENT_AADHAR: aadharVal,
+            STUDENT_AADHAR: aadharVal || "N/A",
             CATEGORY: document.getElementById('field_category').value,
             STUDENT_MOBILE: mobileVal,
-            PHYSICAL_DISABILITY: document.getElementById('field_physical_disability').value.trim(),
+            PHYSICAL_DISABILITY: document.getElementById('field_physical_disability').value.trim() || "N/A",
             FATHER_NAME: document.getElementById('field_father_name').value.trim(),
             FATHER_MOBILE: document.getElementById('field_father_mobile').value.trim(),
             MOTHER_NAME: document.getElementById('field_mother_name').value.trim(),
@@ -1192,8 +1207,8 @@ window.NewCandidateModule = (function () {
             TXN_ID: document.getElementById('field_txn_id').value.trim(),
             HOME_ADDRESS: document.getElementById('field_home_address').value.trim(),
             CONTACT_EMAIL: document.getElementById('field_contact_email').value.trim(),
-            STUDENT_PHOTO_URL: state.studentPhoto,
-            STUDENT_SIGNATURE_URL: state.studentSignature
+            STUDENT_PHOTO_URL: state.studentPhoto || "N/A",
+            STUDENT_SIGNATURE_URL: state.studentSignature || "N/A"
         };
 
         window.PDFGenerator.createApplicationForm(record);

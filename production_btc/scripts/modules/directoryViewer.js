@@ -387,7 +387,7 @@ window.DirectoryViewerModule = (function () {
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
                             </button>
                             <!-- Delete -->
-                            <button onclick="window.DirectoryViewerModule.deleteRecord(${absoluteIndex})" class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Delete Record">
+                            <button onclick="window.DirectoryViewerModule.deleteRecord('${row.STUDENT_ID}')" class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Delete Record">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
                         </div>
@@ -420,36 +420,49 @@ window.DirectoryViewerModule = (function () {
      * Destroys a record with optimistic local removal + async backend commit.
      * Reverts UI on server failure.
      */
-    async function deleteRecord(index) {
-        const rowData = _directoryData[index];
-        if (!rowData) return;
+    async function deleteRecord(studentId) {
+        if (!studentId) return;
 
-        const confirmDelete = confirm(`Are you sure you want to delete ${rowData.STUDENT_NAME || 'this candidate'}? This cannot be undone.`);
+        // Visual Confirmation Gate
+        const confirmDelete = confirm("Are you sure you want to permanently erase this student record? This action cannot be undone.");
         if (!confirmDelete) return;
 
-        // Optimistic local update
-        const backupData = [..._directoryData];
-        _directoryData.splice(index, 1);
-
-        // Retrigger filter to update UI smoothly
-        const searchInput = document.getElementById('dir_search_input');
-        if (searchInput) {
-            searchInput.dispatchEvent(new Event('input'));
-        } else {
-            _filteredData = [..._directoryData];
-            renderTableBody();
+        // Link local data pool to the requested global cache window variable if expected
+        if (!window.MasterCandidateCache) {
+            window.MasterCandidateCache = _directoryData;
         }
+
+        const backupData = [...window.MasterCandidateCache];
+
+        // Optimistic UI Engine Synchronization
+        window.MasterCandidateCache = window.MasterCandidateCache.filter(item => item.STUDENT_ID !== studentId);
+        _directoryData = window.MasterCandidateCache; // Sync local reference
+        
+        // Zero-lag localized layout rendering routine
+        applyDirectoryFilters();
 
         try {
             const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
-            const res = await window.UIUtils.fetchFromEngine({
-                action: "DELETE_RECORD",
-                sheetName: "Main Records",
-                studentId: rowData.STUDENT_ID,
-                token: token
-            });
+            const targetUrl = window.SystemConfig ? window.SystemConfig.API_URL : '';
 
-            if (res && res.status === "success") {
+            // Asynchronous API Payload
+            const response = await fetch(targetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ 
+                    action: 'DELETE_RECORD', 
+                    STUDENT_ID: studentId,
+                    token: token
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server network failure. Status code: ${response.status}`);
+            }
+
+            const res = await response.json();
+
+            if (res && res.success) {
                 if (window.UIUtils) window.UIUtils.showToast("Record permanently deleted.", "success");
             } else {
                 throw new Error(res.message || "Failed to delete from server.");
@@ -457,14 +470,11 @@ window.DirectoryViewerModule = (function () {
         } catch (err) {
             console.error("Delete Error:", err);
             if (window.UIUtils) window.UIUtils.showToast("Failed to delete. Reverting UI.", "error");
+            
             // Revert state on failure
+            window.MasterCandidateCache = backupData;
             _directoryData = backupData;
-            if (searchInput) {
-                searchInput.dispatchEvent(new Event('input'));
-            } else {
-                _filteredData = [..._directoryData];
-                renderTableBody();
-            }
+            applyDirectoryFilters();
         }
     }
 
