@@ -39,6 +39,11 @@ const SHEET_TEMPLATES = {
     'FATHER_NAME', 'FATHER_MOBILE', 'MOTHER_NAME', 'MOTHER_MOBILE', 'GUARDIAN_RELATION', 'GUARDIAN_NAME', 'GUARDIAN_MOBILE', 
     'DECLARATION_1', 'DECLARATION_2', 'PAYABLE_AMOUNT', 'IS_FEE_PAID', 'PAYMENT_MODE', 'TXN_ID', 
     'STUDENT_PHOTO_URL', 'STUDENT_SIGNATURE_URL', 'TIMESTAMP'
+  ],
+
+  // Payment Ledger Row Layout (Fee Collector Module)
+  PaymentLog: [
+    'TXN_ID', 'TIMESTAMP', 'STUDENT_ID', 'RL_NO', 'STUDENT_NAME', 'FEE_PERIOD', 'STATUS', 'AMOUNT_COLLECTED'
   ]
 };
 
@@ -148,6 +153,13 @@ function doPost(e) {
 
       case "DELETE_RECORD":
         return handleDeleteRecord(payload);
+
+      // Payment Ledger Module Routes
+      case "FETCH_PAYMENT_LOGS":
+        return handleFetchPaymentLogs();
+
+      case "BULK_LOG_PAYMENTS":
+        return handleBulkLogPayments(payload.payloadArray);
         
       default:
         return createResponse({ status: "error", message: "Unknown action." });
@@ -527,3 +539,177 @@ function uploadCandidateBase64(base64Str, baseFilename) {
     return "Upload Error: " + err.toString();
   }
 }
+
+/**
+ * ==========================================
+ * 💳 MODULE 8: PAYMENT LEDGER ENGINE
+ * ==========================================
+ * Handles fee collection logging via the "Payment_Logs" sheet.
+ * Provides high-speed batch writes and full ledger reads.
+ */
+
+const PAYMENT_SHEET_NAME = "Payment_Logs";
+
+/**
+ * Retrieves or auto-creates the Payment_Logs sheet with schema headers.
+ * Includes auto-healing: if the sheet exists but is empty, headers are re-injected.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet} The Payment_Logs sheet reference.
+ */
+function getOrCreatePaymentSheet() {
+  const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  let sheet = spreadsheet.getSheetByName(PAYMENT_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(PAYMENT_SHEET_NAME);
+    const headers = SHEET_TEMPLATES.PaymentLog;
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+  }
+
+  // Auto-Healing: If the sheet exists but is completely empty, re-inject headers
+  if (sheet.getLastRow() === 0) {
+    const headers = SHEET_TEMPLATES.PaymentLog;
+    sheet.appendRow(headers);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+  }
+
+  return sheet;
+}
+
+/**
+ * FETCH_PAYMENT_LOGS Handler
+ * --------------------------------------------------
+ * Comprehensive data extraction utility targeting the "Payment_Logs" sheet.
+ * Reads the entire data matrix from Row 2 down to getLastRow(),
+ * maps values to clean JSON objects with precise schema keys:
+ *   TXN_ID, TIMESTAMP, STUDENT_ID, RL_NO, STUDENT_NAME, FEE_PERIOD, STATUS, AMOUNT_COLLECTED
+ *
+ * Routing Trigger: case "FETCH_PAYMENT_LOGS" in doPost()
+ * Returns: { success: true, status: "success", data: logsArray }
+ */
+function handleFetchPaymentLogs() {
+  try {
+    const sheet = getOrCreatePaymentSheet();
+    const lastRow = sheet.getLastRow();
+
+    // If only headers exist (or sheet is empty), return empty dataset
+    if (lastRow <= 1) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, status: "success", data: [] })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const schema = SHEET_TEMPLATES.PaymentLog;
+    const dataRange = sheet.getRange(2, 1, lastRow - 1, schema.length);
+    const allValues = dataRange.getValues();
+
+    const logsArray = [];
+    for (let i = 0; i < allValues.length; i++) {
+      const row = allValues[i];
+      const record = {};
+      for (let j = 0; j < schema.length; j++) {
+        const key = schema[j];
+        const cellValue = row[j];
+
+        // Coerce Date objects to ISO strings for clean frontend parsing
+        if (key === 'TIMESTAMP' && cellValue instanceof Date) {
+          record[key] = cellValue.toISOString();
+        } else {
+          record[key] = cellValue;
+        }
+      }
+      logsArray.push(record);
+    }
+
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true, status: "success", data: logsArray })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        success: false,
+        status: "error",
+        message: "Payment Ledger Fetch Error: " + error.toString()
+      })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * BULK_LOG_PAYMENTS Handler (Transactional Bulk-Write Engine)
+ * --------------------------------------------------
+ * Accepts an incoming array of month payment objects, maps them into
+ * a flat 2D rows matrix aligned with the PaymentLog sheet columns,
+ * finds the current lastRow offset value, and injects the entire batch
+ * simultaneously using a single atomic execution boundary:
+ *   sheet.getRange(lastRow + 1, 1, matrix.length, schema.length).setValues(matrix);
+ *
+ * Routing Trigger: case "BULK_LOG_PAYMENTS" in doPost()
+ *
+ * @param {Array<Object>} payloadArray - Array of payment objects, each containing:
+ *   {
+ *     TXN_ID: string,          // Unique transaction trace token (e.g. "TXN-2026-A3F7B")
+ *     TIMESTAMP: string,       // ISO date string of payment time
+ *     STUDENT_ID: string,      // Linked student identifier
+ *     RL_NO: string,           // Roll number reference
+ *     STUDENT_NAME: string,    // Full candidate name
+ *     FEE_PERIOD: string,      // Month-Year label (e.g. "January-2026")
+ *     STATUS: string,          // Payment status (e.g. "PAID")
+ *     AMOUNT_COLLECTED: number // Amount in INR
+ *   }
+ *
+ * Returns: { status: "success", success: true, message: "...", rowsWritten: N }
+ */
+function handleBulkLogPayments(payloadArray) {
+  try {
+    // Input Validation Gate
+    if (!payloadArray || !Array.isArray(payloadArray) || payloadArray.length === 0) {
+      return createResponse({
+        status: "error",
+        success: false,
+        message: "Invalid payload: Expected a non-empty array of payment objects."
+      });
+    }
+
+    const sheet = getOrCreatePaymentSheet();
+    const schema = SHEET_TEMPLATES.PaymentLog;
+
+    // Build the 2D matrix aligned to schema column order
+    const matrix = [];
+    for (let i = 0; i < payloadArray.length; i++) {
+      const entry = payloadArray[i];
+      const row = [];
+      for (let j = 0; j < schema.length; j++) {
+        const key = schema[j];
+        if (key === 'TIMESTAMP' && entry[key]) {
+          // Ensure timestamps are stored as proper Date objects for sheet formatting
+          row.push(new Date(entry[key]));
+        } else {
+          row.push(entry[key] !== undefined && entry[key] !== null ? entry[key] : "");
+        }
+      }
+      matrix.push(row);
+    }
+
+    // ⚡ Atomic Batch Write: Single execution boundary for maximum throughput
+    // This avoids N individual appendRow calls, collapsing them into one I/O operation.
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, matrix.length, schema.length).setValues(matrix);
+
+    return createResponse({
+      status: "success",
+      success: true,
+      message: "Successfully logged " + matrix.length + " payment transaction(s).",
+      rowsWritten: matrix.length
+    });
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      success: false,
+      message: "Bulk Payment Write Error: " + error.toString()
+    });
+  }
+}
+

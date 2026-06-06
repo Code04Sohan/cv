@@ -236,7 +236,9 @@ window.DirectoryViewerModule = (function () {
     // =========================================
 
     function applyDirectoryFilters() {
-        const query = (document.getElementById('dir_search_input')?.value || '').toLowerCase().trim();
+        const searchInput = document.getElementById('dir_search_input');
+        const query = (searchInput?.value || '').toLowerCase().trim();
+        
         const fCourse = document.getElementById('filter_course')?.value || '';
         const fBatch = document.getElementById('filter_batch')?.value || '';
         const fSessFrom = document.getElementById('filter_sess_from')?.value || '';
@@ -244,27 +246,28 @@ window.DirectoryViewerModule = (function () {
         const fGender = document.getElementById('filter_gender')?.value || '';
         const fYear = document.getElementById('filter_admission_year')?.value || '';
 
-        _filteredData = _directoryData.filter(row => {
-            // 1. Text Matcher (Name, Phone, ID)
+        _filteredData = _directoryData.filter(item => {
+            // 1. Text Matcher (Name, ID, Mobile, RL_NO)
             let textMatch = true;
             if (query !== '') {
-                const name = (row.STUDENT_NAME || '').toLowerCase();
-                const phone = (String(row.STUDENT_MOBILE || '')).toLowerCase();
-                const id = (String(row.STUDENT_ID || '')).toLowerCase();
-                textMatch = name.includes(query) || phone.includes(query) || id.includes(query);
+                textMatch = 
+                    (item.STUDENT_NAME && item.STUDENT_NAME.toLowerCase().includes(query)) ||
+                    (item.STUDENT_ID && String(item.STUDENT_ID).toLowerCase().includes(query)) ||
+                    (item.STUDENT_MOBILE && String(item.STUDENT_MOBILE).toLowerCase().includes(query)) ||
+                    (item.RL_NO && String(item.RL_NO).toLowerCase().includes(query)); // Explicit String Casting Fix
             }
             if (!textMatch) return false;
 
             // 2. Multi-Drop Parameters
-            if (fCourse && row.ENROLLED_COURSE !== fCourse) return false;
-            if (fBatch && row.CLASS_BATCH_DAYS !== fBatch) return false;
-            if (fGender && row.GENDER !== fGender) return false;
+            if (fCourse && item.ENROLLED_COURSE !== fCourse) return false;
+            if (fBatch && item.CLASS_BATCH_DAYS !== fBatch) return false;
+            if (fGender && item.GENDER !== fGender) return false;
 
             // 3. Academic Session (Split parsing)
             if (fSessFrom || fSessTo) {
                 let sFrom = '', sTo = '';
-                if (row.SESSION && row.SESSION.includes('-')) {
-                    const parts = row.SESSION.split('-');
+                if (item.SESSION && item.SESSION.includes('-')) {
+                    const parts = item.SESSION.split('-');
                     sFrom = parts[0];
                     sTo = parts[1];
                 }
@@ -274,7 +277,7 @@ window.DirectoryViewerModule = (function () {
 
             // 4. Strict Admission Year Evaluation
             if (fYear) {
-                const doa = row.DATE_OF_ADMISSION || '';
+                const doa = item.DATE_OF_ADMISSION || '';
                 const rowYear = doa.length >= 4 ? doa.substring(0, 4) : '';
                 if (rowYear !== fYear) return false;
             }
@@ -385,6 +388,10 @@ window.DirectoryViewerModule = (function () {
                             <!-- Reprint PDF -->
                             <button onclick="window.DirectoryViewerModule.printPDF(${absoluteIndex})" class="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Reprint PDF">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                            </button>
+                            <!-- 💲 Pay Fees — Cross-Module Bridge to Fee Collector -->
+                            <button onclick="window.PaymentCollectorModule.openCartForCandidate(window.DirectoryViewerModule.getRecordByIndex(${absoluteIndex}))" class="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors" title="💲 Pay Fees">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                             </button>
                             <!-- Delete -->
                             <button onclick="window.DirectoryViewerModule.deleteRecord('${row.STUDENT_ID}')" class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Delete Record">
@@ -1177,6 +1184,18 @@ window.DirectoryViewerModule = (function () {
     // 📦 PUBLIC API
     // =========================================
 
+    /**
+     * Returns the raw candidate record object at the given index
+     * from the master directory data array.
+     * Used by cross-module bridges (e.g., Pay Fees button → PaymentCollectorModule).
+     *
+     * @param {number} index — Absolute index into _directoryData
+     * @returns {Object|null} The candidate record or null if out-of-bounds
+     */
+    function getRecordByIndex(index) {
+        return _directoryData[index] || null;
+    }
+
     return {
         mount,
         viewRecord,
@@ -1186,7 +1205,8 @@ window.DirectoryViewerModule = (function () {
         printPDF,
         processEditAttachment,
         getBase64FromDriveUrl,
-        exportToCsv
+        exportToCsv,
+        getRecordByIndex
     };
 
 })();
