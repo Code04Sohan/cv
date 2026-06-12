@@ -2,559 +2,574 @@
  * ==========================================
  * 📊 PAYMENT LEDGER MODULE (paymentLedger.js)
  * ==========================================
- * Auditing Ledger & Statement Generator interface.
- * Encapsulated inside window.PaymentLedgerModule.
- *
+ * Auditing Ledger Engine Development
+ * 
  * Features:
- *  - Premium dark-themed workspace
- *  - Multi-Criteria Processing Engine (applyLedgerFilters)
- *  - Temporal Boundary Slicer
- *  - Cross-referencing with MasterCandidateCache for Course/Batch filtering
- *  - Live Financial Aggregates Strip
- *  - Statement CSV Data Exporter
+ * - Tailwind CSS dark-themed layout interface container
+ * - Global search input box and Advanced Filters Drawer
+ * - Multi-Criteria Processing Loop with temporal window slicing
+ * - Live Financial Aggregates Strip
+ * - High-Fidelity Grid UI Template with dd-mm-yyyy and Tailwind badges
+ * - Instantaneous Statement CSV Data Exporter
+ * 
+ * Namespace: window.PaymentLedgerModule
  */
-
 window.PaymentLedgerModule = (function () {
     'use strict';
 
     // =========================================
-    // 🧠 INTERNAL STATE
+    // 🔒 INTERNAL STATE
     // =========================================
-
     let _container = null;
-    let _rawLedgerData = [];
+    let _rawLedgerDataset = [];
     window.currentFilteredLedgerDataset = [];
 
-    // Constants for dynamic dropdowns
-    let _availableCourses = new Set();
-    let _availableBatches = new Set();
+    // =========================================
+    // 🔧 UTILITY HELPERS
+    // =========================================
+
+    function getAuthToken() {
+        return window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
+    }
+
+    /**
+     * Formats an ISO string or Date into dd-mm-yyyy
+     */
+    function formatDateDisplay(dateStr) {
+        if (!dateStr) return 'N/A';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return 'N/A';
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+    }
 
     // =========================================
     // 🚀 MODULE LIFECYCLE
     // =========================================
 
-    /**
-     * Mounts the view into the DOM container.
-     */
-    function mount(container) {
+    async function mount(container) {
         _container = container;
         _container.innerHTML = buildShellHTML();
-        attachEventListeners();
-        init(); // Trigger initialization lifecycle hook on mount
+
+        // Populate course and batch dropdowns from MasterCandidateCache if available
+        populateDropdowns();
+
+        // Default to current year range
+        setDefaultDateRange();
+
+        // Perform initial fetch
+        await fetchAndApplyFilters();
     }
 
-    /**
-     * Entry method hook: Initializes the module, fetches fresh data,
-     * pre-populates table and summary widgets.
-     */
-    async function init() {
-        if (!_container) return;
-        
-        // Show loading state
-        renderLoadingState();
-        
-        try {
-            // 1. Ensure candidate cache is ready for advanced Course/Batch joins
-            await ensureCandidateCacheReady();
-            
-            // 2. Fetch fresh ledger data
-            const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
-            const res = await window.UIUtils.fetchFromEngine({
-                action: "FETCH_PAYMENT_LOGS",
-                token: token
-            });
+    function init() {
+        // Entry hook executed by navigation link
+        _rawLedgerDataset = [];
+        window.currentFilteredLedgerDataset = [];
 
-            if (res && res.success === true && Array.isArray(res.data)) {
-                _rawLedgerData = res.data;
-                window.currentFilteredLedgerDataset = [..._rawLedgerData];
-                
-                populateFilterDropdowns();
-                applyLedgerFilters(); // Triggers renderTable and updateAggregates
-            } else {
-                throw new Error("Failed to load ledger data.");
-            }
-        } catch (error) {
-            console.error('[PaymentLedger] Init error:', error);
-            renderErrorState(error.message);
+        if (window.AppCore && window.AppCore.navigateTo) {
+            window.AppCore.navigateTo('paymentLedger');
         }
     }
 
     // =========================================
     // 🏗️ SHELL HTML BUILDER
     // =========================================
-
     function buildShellHTML() {
         return `
-            <div class="h-full flex flex-col max-w-7xl mx-auto animate-fade-in pb-10 space-y-6">
+            <div id="ledgerShell" class="max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
                 
-                <!-- Top Command Action Line -->
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-                    <div class="flex-1 max-w-xl relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        </div>
-                        <input type="text" id="pl_search_input"
-                            placeholder="Search Name, Student ID, Roll No, or TXN ID..."
-                            class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all shadow-inner text-sm">
-                    </div>
+                <!-- ═══════════════════════════════════════ -->
+                <!-- HEADER & COMMAND ROW                    -->
+                <!-- ═══════════════════════════════════════ -->
+                <div class="relative bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700/80 overflow-hidden">
+                    <div class="absolute -top-20 -right-20 w-60 h-60 rounded-full bg-indigo-500/5 dark:bg-indigo-500/10 blur-3xl pointer-events-none"></div>
+                    <div class="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-brand-500/5 dark:bg-brand-500/10 blur-3xl pointer-events-none"></div>
                     
-                    <div class="flex items-center gap-3">
-                        <button id="pl_toggle_filters_btn" class="px-5 py-3 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200 transition-colors flex items-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-                            <span>Toggle Advanced Filters</span>
-                        </button>
-                        
-                        <button id="pl_download_csv_btn" class="px-5 py-3 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg transition-colors flex items-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            <span>📥 Download Statement Report</span>
+                    <div class="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            </div>
+                            <div>
+                                <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white">📊 Payment Ledger</h1>
+                                <p class="text-sm text-slate-500 dark:text-slate-400 font-medium mt-0.5">Auditing Engine & Financial Statements</p>
+                            </div>
+                        </div>
+
+                        <div class="w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
+                            <!-- Global Search -->
+                            <div class="relative w-full sm:w-64">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                    <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                </div>
+                                <input type="text" id="ledgerSearchInput" placeholder="Search Name, ID, TXN..."
+                                    oninput="window.PaymentLedgerModule.applyLedgerFilters()"
+                                    class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-inner">
+                            </div>
+                            <!-- Export Button -->
+                            <button onclick="window.PaymentLedgerModule.exportToCSV()" class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-sm active:scale-[0.97] shrink-0">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                📥 Download Statement Report
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Toggle Drawer Button -->
+                    <div class="relative z-10 mt-6 pt-4 border-t border-slate-100 dark:border-slate-700/50">
+                        <button onclick="window.PaymentLedgerModule.toggleFilters()" class="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                            <svg id="ledgerFilterChevron" class="w-4 h-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            Toggle Advanced Filters
                         </button>
                     </div>
                 </div>
 
-                <!-- Advanced Parameters Selector Panel (Drawer) -->
-                <div id="ledgerFilterPanel" class="hidden bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-all">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <!-- Enrolled Course -->
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Enrolled Course</label>
-                            <select id="pl_course_select" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium">
+                <!-- ═══════════════════════════════════════ -->
+                <!-- ADVANCED FILTER CONTROLS DRAWER         -->
+                <!-- ═══════════════════════════════════════ -->
+                <div id="ledgerFilterPanel" class="hidden bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/80 shadow-sm transition-all duration-300">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="space-y-1.5">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Enrolled Course</label>
+                            <select id="ledgerCourseFilter" onchange="window.PaymentLedgerModule.applyLedgerFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                                 <option value="">All Courses</option>
                             </select>
                         </div>
-                        
-                        <!-- Class Batch / Days -->
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Class Batch / Days</label>
-                            <select id="pl_batch_select" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium">
+                        <div class="space-y-1.5">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Class Batch / Days</label>
+                            <select id="ledgerBatchFilter" onchange="window.PaymentLedgerModule.applyLedgerFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                                 <option value="">All Batches</option>
                             </select>
                         </div>
-
-                        <!-- From Date -->
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">From Date</label>
-                            <input type="date" id="pl_from_date" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium [color-scheme:light] dark:[color-scheme:dark]">
+                        <div class="space-y-1.5">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">From Date</label>
+                            <input type="date" id="ledgerFromDate" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                         </div>
-
-                        <!-- To Date -->
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">To Date</label>
-                            <input type="date" id="pl_to_date" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm font-medium [color-scheme:light] dark:[color-scheme:dark]">
+                        <div class="space-y-1.5">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">To Date</label>
+                            <input type="date" id="ledgerToDate" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                         </div>
                     </div>
                 </div>
 
-                <!-- Live Financial Aggregates Strip -->
-                <div class="bg-gradient-to-r from-slate-800 to-slate-900 dark:from-slate-900 dark:to-black p-4 rounded-xl shadow-md border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <!-- ═══════════════════════════════════════ -->
+                <!-- LIVE FINANCIAL AGGREGATES STRIP         -->
+                <!-- ═══════════════════════════════════════ -->
+                <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
-                            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                        <div id="ledgerSpinner" class="hidden w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-800/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                            <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                         </div>
-                        <p id="pl_aggregate_text" class="text-slate-300 font-medium text-sm">
-                            Showing 0 audited transaction logs.
-                        </p>
+                        <div id="ledgerReadyIcon" class="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-800/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <p id="ledgerSummaryRows" class="text-sm font-bold text-slate-700 dark:text-slate-300">Showing 0 audited transaction logs.</p>
                     </div>
-                    <div class="text-right">
-                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">Liquid Statement Volume</p>
-                        <p id="pl_aggregate_sum" class="text-2xl font-black text-emerald-400 tracking-tight">
-                            ₹0
-                        </p>
+                    <div class="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
+                        <span class="text-xs font-black text-slate-400 uppercase tracking-wider">Liquid Statement Volume:</span>
+                        <span id="ledgerSummaryVolume" class="text-lg font-black text-emerald-600 dark:text-emerald-400">₹ 0</span>
                     </div>
                 </div>
 
-                <!-- High-Fidelity Ledger Grid UI -->
-                <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1 overflow-hidden flex flex-col min-h-[400px]">
+                <!-- ═══════════════════════════════════════ -->
+                <!-- HIGH-FIDELITY GRID UI TEMPLATE          -->
+                <!-- ═══════════════════════════════════════ -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/80 overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse">
                             <thead>
                                 <tr class="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">Transaction ID</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">Date</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">Candidate</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">Fee Period</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap text-right">Amount</th>
-                                    <th class="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap text-center">Status</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Date</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Transaction ID</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Student Details</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Course / Batch</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Fee Period</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Status</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">Amount</th>
                                 </tr>
                             </thead>
-                            <tbody id="pl_table_body" class="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                <!-- Dynamic Rows -->
+                            <tbody id="ledgerGridBody" class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                                <!-- Rendered dynamically -->
                             </tbody>
                         </table>
                     </div>
+                    <!-- Empty State -->
+                    <div id="ledgerEmptyState" class="hidden flex-col items-center justify-center p-12 text-slate-400">
+                        <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                        <p class="text-sm font-bold">No transactions match your filters.</p>
+                    </div>
                 </div>
-
             </div>
         `;
     }
 
     // =========================================
-    // 🔌 EVENT WIRING & LOGIC
+    // 🎛️ UI INTERACTIONS
     // =========================================
 
-    function attachEventListeners() {
-        // Toggle Filters
-        const toggleBtn = document.getElementById('pl_toggle_filters_btn');
-        const filterPanel = document.getElementById('ledgerFilterPanel');
-        if (toggleBtn && filterPanel) {
-            toggleBtn.addEventListener('click', () => {
-                filterPanel.classList.toggle('hidden');
-            });
-        }
+    function toggleFilters() {
+        const panel = document.getElementById('ledgerFilterPanel');
+        const chevron = document.getElementById('ledgerFilterChevron');
+        if (!panel || !chevron) return;
 
-        // Search & Filter Inputs
-        const searchInput = document.getElementById('pl_search_input');
-        const courseSelect = document.getElementById('pl_course_select');
-        const batchSelect = document.getElementById('pl_batch_select');
-        const fromDate = document.getElementById('pl_from_date');
-        const toDate = document.getElementById('pl_to_date');
-
-        [searchInput, courseSelect, batchSelect, fromDate, toDate].forEach(el => {
-            if (el) el.addEventListener('input', applyLedgerFilters);
-        });
-
-        // Download CSV
-        const downloadBtn = document.getElementById('pl_download_csv_btn');
-        if (downloadBtn) {
-            downloadBtn.addEventListener('click', exportToCSV);
+        if (panel.classList.contains('hidden')) {
+            panel.classList.remove('hidden');
+            chevron.classList.add('rotate-180');
+        } else {
+            panel.classList.add('hidden');
+            chevron.classList.remove('rotate-180');
         }
     }
 
-    /**
-     * Ensure MasterCandidateCache exists to pull Course/Batch info.
-     */
-    async function ensureCandidateCacheReady() {
-        if (!window.MasterCandidateCache || window.MasterCandidateCache.length === 0) {
-            const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
-            const res = await window.UIUtils.fetchFromEngine({
-                action: "FETCH_DIRECTORY",
-                sheetName: "Main Records",
-                token: token
-            });
-            if (res && res.status === "success" && Array.isArray(res.data)) {
-                window.MasterCandidateCache = res.data;
+    function populateDropdowns() {
+        const courseSelect = document.getElementById('ledgerCourseFilter');
+        const batchSelect = document.getElementById('ledgerBatchFilter');
+        if (!courseSelect || !batchSelect || !window.MasterCandidateCache) return;
+
+        const courses = new Set();
+        const batches = new Set();
+
+        window.MasterCandidateCache.forEach(c => {
+            if (c.ENROLLED_COURSE) courses.add(String(c.ENROLLED_COURSE).trim());
+            if (c.CLASS_BATCH_DAYS) batches.add(String(c.CLASS_BATCH_DAYS).trim());
+        });
+
+        // Generate options dynamically
+        courses.forEach(course => {
+            if (!course) return;
+            const opt = document.createElement('option');
+            opt.value = course;
+            opt.textContent = course;
+            courseSelect.appendChild(opt);
+        });
+
+        batches.forEach(batch => {
+            if (!batch) return;
+            const opt = document.createElement('option');
+            opt.value = batch;
+            opt.textContent = batch;
+            batchSelect.appendChild(opt);
+        });
+    }
+
+    function setDefaultDateRange() {
+        const fromInput = document.getElementById('ledgerFromDate');
+        const toInput = document.getElementById('ledgerToDate');
+
+        if (!fromInput || !toInput) return;
+
+        const currentYear = new Date().getFullYear();
+
+        // Fix: Standardized template string literal generation with zero escape errors
+        fromInput.value = `${currentYear}-01-01`;
+
+        const endOfDec = new Date(currentYear, 11, 31);
+        toInput.value = endOfDec.toISOString().split('T')[0];
+    }
+
+    function toggleSpinner(show) {
+        const spinner = document.getElementById('ledgerSpinner');
+        const readyIcon = document.getElementById('ledgerReadyIcon');
+        if (spinner && readyIcon) {
+            if (show) {
+                spinner.classList.remove('hidden');
+                readyIcon.classList.add('hidden');
             } else {
-                window.MasterCandidateCache = [];
+                spinner.classList.add('hidden');
+                readyIcon.classList.remove('hidden');
             }
         }
     }
 
-    /**
-     * Extracts unique courses and batches from the cache to populate dropdowns.
-     */
-    function populateFilterDropdowns() {
-        // Clear existing set values
-        _availableCourses.clear();
-        _availableBatches.clear();
+    // =========================================
+    // 📡 DATA FETCHING (Range Aggregator)
+    // =========================================
 
-        const cache = window.MasterCandidateCache || [];
-        cache.forEach(candidate => {
-            if (candidate.ENROLLED_COURSE) _availableCourses.add(candidate.ENROLLED_COURSE);
-            if (candidate.CLASS_BATCH_DAYS) _availableBatches.add(candidate.CLASS_BATCH_DAYS);
-        });
+    async function fetchAndApplyFilters() {
+        const fromInput = document.getElementById('ledgerFromDate');
+        const toInput = document.getElementById('ledgerToDate');
 
-        // Populate Course Dropdown
-        const courseSelect = document.getElementById('pl_course_select');
-        if (courseSelect) {
-            let html = '<option value="">All Courses</option>';
-            Array.from(_availableCourses).sort().forEach(c => {
-                html += `<option value="${c}">${c}</option>`;
-            });
-            courseSelect.innerHTML = html;
+        if (!fromInput || !toInput) return;
+
+        const dateFrom = new Date(fromInput.value);
+        const dateTo = new Date(toInput.value);
+
+        // Safety Check: Calculate total annual query span
+        const yearDifference = dateTo.getFullYear() - dateFrom.getFullYear();
+
+        if (yearDifference > 2) {
+            if (window.UIUtils && typeof window.UIUtils.showToast === 'function') {
+                window.UIUtils.showToast("To maintain high speed, please restrict your statement search window to a maximum duration of 2 consecutive years.", "warning");
+            } else {
+                alert("To maintain high speed, please restrict your statement search window to a maximum duration of 2 consecutive years.");
+            }
+            return; // Hard stop: Terminate network request execution to protect backend memory
         }
 
-        // Populate Batch Dropdown
-        const batchSelect = document.getElementById('pl_batch_select');
-        if (batchSelect) {
-            let html = '<option value="">All Batches</option>';
-            Array.from(_availableBatches).sort().forEach(b => {
-                html += `<option value="${b}">${b}</option>`;
+        const startDate = fromInput.value;
+        const endDate = toInput.value;
+
+        if (!startDate || !endDate) return;
+
+        toggleSpinner(true);
+
+        try {
+            const res = await window.UIUtils.fetchFromEngine({
+                action: 'FETCH_STATEMENT_RANGE',
+                token: getAuthToken(),
+                startDate: startDate,
+                endDate: endDate
             });
-            batchSelect.innerHTML = html;
+
+            if (res && res.status === 'success' && Array.isArray(res.data)) {
+                _rawLedgerDataset = res.data;
+            } else {
+                _rawLedgerDataset = [];
+                if (res && res.message) {
+                    console.debug('[PaymentLedger] Fetch warning:', res.message);
+                }
+            }
+        } catch (err) {
+            console.error('[PaymentLedger] Failed to fetch statement range:', err);
+            _rawLedgerDataset = [];
+            if (window.UIUtils) window.UIUtils.showToast('Failed to fetch ledger logs.', 'error');
+        } finally {
+            toggleSpinner(false);
+            applyLedgerFilters();
         }
     }
 
     // =========================================
-    // ⚙️ THE MULTI-CRITERIA PROCESSING ENGINE
+    // 🔄 MULTI-CRITERIA PROCESSING LOOP
     // =========================================
 
     /**
-     * In-memory compilation method that reads the entire raw database log
-     * and filters rows dynamically whenever an input changes.
+     * In-memory compiler that filters the downloaded log dataset locally 
+     * based on active input and dropdown parameters.
      */
     function applyLedgerFilters() {
-        const query = (document.getElementById('pl_search_input')?.value || '').trim().toLowerCase();
-        const courseFilter = document.getElementById('pl_course_select')?.value || '';
-        const batchFilter = document.getElementById('pl_batch_select')?.value || '';
-        const fromDateStr = document.getElementById('pl_from_date')?.value || '';
-        const toDateStr = document.getElementById('pl_to_date')?.value || '';
+        const searchInput = document.getElementById('ledgerSearchInput');
+        const courseSelect = document.getElementById('ledgerCourseFilter');
+        const batchSelect = document.getElementById('ledgerBatchFilter');
+        const fromInput = document.getElementById('ledgerFromDate');
+        const toInput = document.getElementById('ledgerToDate');
 
-        // Temporal Boundaries Setup
-        let fromDate = null;
-        let toDate = null;
-        if (fromDateStr) {
-            fromDate = new Date(fromDateStr);
-            fromDate.setHours(0, 0, 0, 0);
-        }
-        if (toDateStr) {
-            toDate = new Date(toDateStr);
-            toDate.setHours(23, 59, 59, 999);
-        }
+        const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        const courseQuery = courseSelect ? courseSelect.value : '';
+        const batchQuery = batchSelect ? batchSelect.value : '';
+        
+        const startDate = fromInput && fromInput.value ? new Date(fromInput.value + 'T00:00:00') : null;
+        const endDate = toInput && toInput.value ? new Date(toInput.value + 'T23:59:59') : null;
 
-        // Cache map for fast Course/Batch lookup
-        const studentCacheMap = new Map();
+        const candidateMap = {};
         if (window.MasterCandidateCache) {
-            window.MasterCandidateCache.forEach(c => {
-                if (c.STUDENT_ID) studentCacheMap.set(c.STUDENT_ID, c);
-            });
+            for (let i = 0; i < window.MasterCandidateCache.length; i++) {
+                const c = window.MasterCandidateCache[i];
+                if (c.STUDENT_ID) {
+                    candidateMap[c.STUDENT_ID] = {
+                        course: c.ENROLLED_COURSE || '',
+                        batch: c.CLASS_BATCH_DAYS || ''
+                    };
+                }
+            }
         }
 
-        window.currentFilteredLedgerDataset = _rawLedgerData.filter(log => {
-            // 1. Unified Text Matcher
-            let textMatch = true;
+        window.currentFilteredLedgerDataset = _rawLedgerDataset.filter(log => {
+            const logStudentId = String(log.STUDENT_ID || '').trim();
+            const candidateInfo = candidateMap[logStudentId] || { course: '', batch: '' };
+
+            log._course = candidateInfo.course;
+            log._batch = candidateInfo.batch;
+
+            if (courseQuery && candidateInfo.course !== courseQuery) return false;
+            if (batchQuery && candidateInfo.batch !== batchQuery) return false;
+
+            let matchesDate = true;
+            if (log.TIMESTAMP) {
+                let logDate = new Date(log.TIMESTAMP);
+                // Resilient parser for DD/MM/YYYY or MM/DD/YYYY from Sheets
+                if (isNaN(logDate.getTime()) && typeof log.TIMESTAMP === 'string') {
+                    const parts = log.TIMESTAMP.split(/[\/\-]/);
+                    if (parts.length === 3) {
+                        logDate = new Date(parts[2], parts[1] - 1, parts[0]);
+                    }
+                }
+                if (!isNaN(logDate.getTime())) {
+                    if (startDate && logDate < startDate) matchesDate = false;
+                    if (endDate && logDate > endDate) matchesDate = false;
+                }
+            }
+            if (!matchesDate) return false;
+
             if (query) {
-                const searchStr = `${log.STUDENT_NAME || ''} ${log.RL_NO || ''} ${log.STUDENT_ID || ''} ${log.TXN_ID || ''}`.toLowerCase();
-                textMatch = searchStr.includes(query);
+                const nameMatch = log.STUDENT_NAME && String(log.STUDENT_NAME).toLowerCase().includes(query);
+                const idMatch = log.STUDENT_ID && String(log.STUDENT_ID).toLowerCase().includes(query);
+                const rlMatch = log.RL_NO && String(log.RL_NO).toLowerCase().includes(query);
+                const txnMatch = log.TXN_ID && String(log.TXN_ID).toLowerCase().includes(query);
+                if (!nameMatch && !idMatch && !rlMatch && !txnMatch) return false;
             }
 
-            // 2. Temporal Boundary Slicer
-            let dateMatch = true;
-            if (fromDate || toDate) {
-                const logDate = new Date(log.TIMESTAMP);
-                if (fromDate && logDate < fromDate) dateMatch = false;
-                if (toDate && logDate > toDate) dateMatch = false;
-            }
-
-            // 3. Course & Batch Linkage Slicer
-            let courseMatch = true;
-            let batchMatch = true;
-            if (courseFilter || batchFilter) {
-                const linkedCandidate = studentCacheMap.get(log.STUDENT_ID) || {};
-                if (courseFilter && linkedCandidate.ENROLLED_COURSE !== courseFilter) courseMatch = false;
-                if (batchFilter && linkedCandidate.CLASS_BATCH_DAYS !== batchFilter) batchMatch = false;
-            }
-
-            return textMatch && dateMatch && courseMatch && batchMatch;
+            return true;
         });
 
-        // Sort by newest first
-        window.currentFilteredLedgerDataset.sort((a, b) => new Date(b.TIMESTAMP) - new Date(a.TIMESTAMP));
-
-        updateAggregates();
-        renderTable();
-    }
-
-    // =========================================
-    // 🎨 UI RENDERING ENGINES
-    // =========================================
-
-    function updateAggregates() {
-        const dataset = window.currentFilteredLedgerDataset;
-        let totalSum = 0;
-
-        dataset.forEach(log => {
-            // Ensure AMOUNT_COLLECTED is numeric, default 0
-            const amount = parseFloat(log.AMOUNT_COLLECTED) || 0;
-            // Only sum if PAID (ignore FAILED or REFUNDED)
-            if (String(log.STATUS).toUpperCase() === 'PAID') {
-                totalSum += amount;
-            }
+        window.currentFilteredLedgerDataset.sort((a, b) => {
+            const d1 = new Date(a.TIMESTAMP).getTime();
+            const d2 = new Date(b.TIMESTAMP).getTime();
+            return d2 - d1;
         });
 
-        const textEl = document.getElementById('pl_aggregate_text');
-        if (textEl) {
-            textEl.textContent = `Showing ${dataset.length} audited transaction log${dataset.length === 1 ? '' : 's'}.`;
-        }
+        // Update Aggregate UI Counters directly to existing DOM IDs
+        let totalRevenue = 0;
+        window.currentFilteredLedgerDataset.forEach(row => {
+            totalRevenue += Number(row.AMOUNT_COLLECTED) || 0;
+        });
 
-        const sumEl = document.getElementById('pl_aggregate_sum');
-        if (sumEl) {
-            sumEl.textContent = '₹' + totalSum.toLocaleString('en-IN');
-        }
+        const rowsText = document.getElementById('ledgerSummaryRows');
+        const volText = document.getElementById('ledgerSummaryVolume');
+        
+        if (rowsText) rowsText.innerText = `Showing ${window.currentFilteredLedgerDataset.length} audited transaction logs.`;
+        if (volText) volText.innerText = `₹ ${totalRevenue}`;
+
+        renderLedgerTable(window.currentFilteredLedgerDataset);
     }
 
-    function renderTable() {
-        const tbody = document.getElementById('pl_table_body');
+    function renderLedgerTable(records) {
+        const tbody = document.getElementById('ledgerGridBody');
+        const emptyState = document.getElementById('ledgerEmptyState');
+        
         if (!tbody) return;
 
-        const dataset = window.currentFilteredLedgerDataset;
-
-        if (dataset.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                        <div class="flex flex-col items-center justify-center">
-                            <svg class="w-12 h-12 mb-3 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                            <p class="text-base font-bold">No transactions found</p>
-                            <p class="text-sm">Adjust your filters to see more results.</p>
-                        </div>
-                    </td>
-                </tr>
-            `;
+        if (!records || records.length === 0) {
+            tbody.innerHTML = '';
+            if (emptyState) {
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+            }
             return;
         }
 
+        if (emptyState) {
+            emptyState.classList.remove('flex');
+            emptyState.classList.add('hidden');
+        }
+
         let html = '';
-        dataset.forEach(row => {
-            // Format ISO Date to dd-mm-yyyy
-            let formattedDate = 'N/A';
-            if (row.TIMESTAMP) {
-                const d = new Date(row.TIMESTAMP);
-                if (!isNaN(d)) {
-                    formattedDate = String(d.getDate()).padStart(2, '0') + '-' + 
-                                    String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-                                    d.getFullYear();
+        records.forEach(item => {
+            let displayDate = 'N/A';
+            if (item.TIMESTAMP) {
+                let d = new Date(item.TIMESTAMP);
+                if (isNaN(d.getTime()) && typeof item.TIMESTAMP === 'string') {
+                    const parts = item.TIMESTAMP.split(/[\/\-]/);
+                    if (parts.length === 3) d = new Date(parts[2], parts[1] - 1, parts[0]);
+                }
+                if (!isNaN(d.getTime())) {
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const month = d.toLocaleString('en-IN', { month: 'short' });
+                    const year = d.getFullYear();
+                    displayDate = `${day} ${month} ${year}`;
                 }
             }
 
-            // High-contrast Status Badge formatting
-            const status = String(row.STATUS || 'UNKNOWN').toUpperCase();
-            let statusBadgeClass = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
-            if (status === 'PAID') {
-                statusBadgeClass = 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50';
-            } else if (status === 'REFUNDED' || status === 'FAILED') {
-                statusBadgeClass = 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50';
-            }
+            const statusClass = item.STATUS === 'PAID' 
+                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                : 'bg-rose-500/10 text-rose-500 border-rose-500/20';
+
+            const courseBatchText = (item._course || item._batch) 
+                ? `${item._course || 'N/A'} <br> <span class="text-[10px] text-slate-500 dark:text-slate-400">${item._batch || ''}</span>`
+                : 'N/A';
 
             html += `
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
-                    <td class="px-6 py-4">
-                        <span class="font-mono text-xs font-bold text-slate-600 dark:text-slate-300">${row.TXN_ID || 'N/A'}</span>
-                    </td>
-                    <td class="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        ${formattedDate}
-                    </td>
-                    <td class="px-6 py-4">
+                <tr class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td class="px-5 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">${displayDate}</td>
+                    <td class="px-5 py-4 text-sm font-mono text-slate-500 dark:text-slate-400">${item.TXN_ID || 'N/A'}</td>
+                    <td class="px-5 py-4">
                         <div class="flex flex-col">
-                            <span class="text-sm font-bold text-slate-800 dark:text-white">${row.STUDENT_NAME || 'Unknown'}</span>
-                            <span class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">ID: ${row.STUDENT_ID || 'N/A'} · RL: ${row.RL_NO || 'N/A'}</span>
+                            <span class="text-sm font-bold text-slate-800 dark:text-white">${item.STUDENT_NAME || 'N/A'}</span>
+                            <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400">${item.STUDENT_ID || 'N/A'}</span>
                         </div>
                     </td>
-                    <td class="px-6 py-4 text-sm font-medium text-slate-700 dark:text-slate-300">
-                        ${row.FEE_PERIOD || 'N/A'}
+                    <td class="px-5 py-4 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        ${courseBatchText}
                     </td>
-                    <td class="px-6 py-4 text-right">
-                        <span class="font-extrabold text-slate-800 dark:text-white">₹${parseFloat(row.AMOUNT_COLLECTED || 0).toLocaleString('en-IN')}</span>
-                    </td>
-                    <td class="px-6 py-4 text-center">
-                        <span class="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${statusBadgeClass}">
-                            ${status}
+                    <td class="px-5 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">${item.FEE_PERIOD || 'N/A'}</td>
+                    <td class="px-5 py-4">
+                        <span class="px-2.5 py-1 rounded-full border text-[10px] font-bold tracking-wide uppercase ${statusClass}">
+                            ${item.STATUS || 'UNKNOWN'}
                         </span>
                     </td>
-                </tr>
-            `;
+                    <td class="px-5 py-4 text-right text-sm font-black text-slate-800 dark:text-white">₹${item.AMOUNT_COLLECTED || 0}</td>
+                </tr>`;
         });
-
+        
         tbody.innerHTML = html;
-    }
-
-    function renderLoadingState() {
-        const tbody = document.getElementById('pl_table_body');
-        if (tbody) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="px-6 py-12 text-center">
-                        <div class="flex justify-center items-center gap-3">
-                            <svg class="animate-spin h-6 w-6 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            <span class="text-sm font-bold text-slate-600 dark:text-slate-400">Fetching Secure Ledger...</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }
-    }
-
-    function renderErrorState(msg) {
-        const tbody = document.getElementById('pl_table_body');
-        if (tbody) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="px-6 py-12 text-center">
-                        <div class="flex flex-col justify-center items-center gap-2">
-                            <svg class="w-10 h-10 text-rose-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span class="text-base font-bold text-slate-800 dark:text-white">Ledger Retrieval Failed</span>
-                            <span class="text-sm text-slate-500">${msg}</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }
     }
 
     // =========================================
     // 📥 STATEMENT CSV DATA EXPORTER
     // =========================================
 
-    /**
-     * Scrapes the current filtered data collection cache, transforms to CSV,
-     * packages as a Blob, forces a download, and auto-revokes the URL.
-     */
     function exportToCSV() {
-        const dataset = window.currentFilteredLedgerDataset;
-        if (!dataset || dataset.length === 0) {
-            if (window.UIUtils) window.UIUtils.showToast("No data to export.", "error");
+        if (!window.currentFilteredLedgerDataset || window.currentFilteredLedgerDataset.length === 0) {
+            if (window.UIUtils) window.UIUtils.showToast("No data available to export.", "warning");
             return;
         }
 
-        // CSV Headers
-        const headers = ["TXN_ID", "TIMESTAMP", "DATE_FORMATTED", "STUDENT_ID", "RL_NO", "STUDENT_NAME", "FEE_PERIOD", "STATUS", "AMOUNT_COLLECTED"];
-        
-        let csvContent = headers.join(",") + "\n";
+        // Define CSV standard headers
+        let csvContent = "Transaction ID,Timestamp,Student Name,Student ID,Billing Period,Amount,Status\n";
 
-        dataset.forEach(row => {
-            // Pre-calculate clean date
-            let formattedDate = '';
-            if (row.TIMESTAMP) {
-                const d = new Date(row.TIMESTAMP);
-                if (!isNaN(d)) {
-                    formattedDate = String(d.getDate()).padStart(2, '0') + '-' + 
-                                    String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-                                    d.getFullYear();
-                }
-            }
+        // Build rows from local memory array cache
+        window.currentFilteredLedgerDataset.forEach(item => {
+            const dateObj = new Date(item.TIMESTAMP);
+            const displayDate = isNaN(dateObj.getTime()) ? 'N/A' : dateObj.toLocaleDateString('en-IN');
 
-            const rowData = headers.map(header => {
-                let cellData = row[header] === undefined || row[header] === null ? "" : String(row[header]);
-                
-                // Special insertion for our custom date column
-                if (header === "DATE_FORMATTED") cellData = formattedDate;
-
-                // Escape double quotes and wrap in quotes if contains commas/quotes
-                cellData = cellData.replace(/"/g, '""');
-                if (cellData.search(/("|,|\n)/g) >= 0) {
-                    cellData = `"${cellData}"`;
-                }
-                return cellData;
-            });
-
-            csvContent += rowData.join(",") + "\n";
+            const row = [
+                item.TXN_ID || 'N/A',
+                displayDate,
+                `"${item.STUDENT_NAME || 'N/A'}"`, // Encapsulate in quotes to prevent comma breaks
+                item.STUDENT_ID || 'N/A',
+                item.FEE_PERIOD || 'N/A',
+                item.AMOUNT_COLLECTED || 0,
+                item.STATUS || 'UNKNOWN'
+            ];
+            csvContent += row.join(",") + "\n";
         });
 
-        // Create instantaneous client-side Blob download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        // Generate data blob download asset container
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
-        
+
+        const timestamp = new Date().toISOString().slice(0, 10);
+        // Clean Variable Assignment: Zero escape errors
+        const fileName = `Statement_Export_${timestamp}.csv`;
+
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `Payment_Ledger_Statement_${new Date().toISOString().split('T')[0]}.csv`);
-        
+        link.setAttribute("download", fileName);
+        link.style.visibility = 'hidden';
+
         document.body.appendChild(link);
         link.click();
-        
-        // Auto-revoke memory
+
+        // Immediate garbage collection
         setTimeout(() => {
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
         }, 100);
-        
-        if (window.UIUtils) window.UIUtils.showToast("Statement report generated.", "success");
+
+        if (window.UIUtils) {
+            window.UIUtils.showToast("Statement exported successfully.", "success");
+        }
     }
 
-    // =========================================
-    // 🔗 PUBLIC API
-    // =========================================
-
+    // Clean Global Scoping Export Return Wrapper
     return {
+        init: init,
         mount: mount,
-        init: init
+        toggleFilters: toggleFilters,
+        applyLedgerFilters: applyLedgerFilters,
+        fetchAndApplyFilters: fetchAndApplyFilters,
+        exportToCSV: exportToCSV
     };
 
-})();
+})(); // End IIFE Wrapper

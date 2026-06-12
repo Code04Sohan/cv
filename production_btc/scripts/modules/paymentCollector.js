@@ -2,115 +2,216 @@
  * ==========================================
  * 💳 FEE COLLECTOR MODULE (paymentCollector.js)
  * ==========================================
- * Self-contained billing interface for monthly fee collection.
- * Encapsulated inside window.PaymentCollectorModule.
+ * Compact billing workspace for the Babla Yoga Training Center ERP.
  *
  * Features:
- *  - Autocomplete candidate lookup against MasterCandidateCache
- *  - 12-month checkbox matrix with year selector
- *  - Safe-lock history sync (prevents double-payment)
- *  - Live delta calculation engine
- *  - Atomic bulk payment submission via BULK_LOG_PAYMENTS
+ * - Inline autocomplete student lookup engine (Name / ID / Contact)
+ * - 12-month checkout checkbox grid with 4-digit year guard
+ * - Backward-chaining waterfall due calculator with lazy year traversal
+ * - Safe-lock green badge freeze for previously paid months
+ * - Live dynamic checkout pricing from runtime fee config cache
+ * - Collapsible ⚙️ Global Fee Rate Settings admin card
+ * - Cross-module bridge: openCartForCandidate(candidateData)
  *
- * Exposed API:
- *  - mount(container)                    — AppCore lifecycle hook
- *  - init()                              — Standalone initialization
- *  - openCartForCandidate(candidateData) — Cross-module bridge
+ * Namespace: window.PaymentCollectorModule
  */
-
 window.PaymentCollectorModule = (function () {
     'use strict';
 
     // =========================================
-    // ⚙️ CONFIGURATION & CONSTANTS
+    // 📅 CONSTANTS
     // =========================================
-
-    /** Base monthly fee rate in INR */
-    const BASE_MONTHLY_RATE = 500;
-
-    /** 12-month label array */
-    const MONTH_LABELS = [
+    const MONTH_NAMES = [
         'January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'
     ];
 
-    /** Strict 4-digit year regex */
-    const YEAR_REGEX = /^\d{4}$/;
+    const MONTH_ICONS = ['❄️', '💧', '🌸', '🌷', '☀️', '🌞', '🌧️', '🍃', '🍂', '🎃', '🍁', '🎄'];
 
     // =========================================
-    // 🧠 INTERNAL STATE
+    // 🔒 INTERNAL STATE
     // =========================================
-
     let _container = null;
     let _selectedCandidate = null;
-    let _paymentLogs = [];
-    let _isSubmitting = false;
-    let _searchDebounceTimer = null;
+    let _calendarYear = new Date().getFullYear();
+    let _mergedLogs = [];
+    let _pendingCandidate = null;
+    let _feeSettingsOpen = false;
+    let _isProcessing = false;
+    let _dueAnalysisComplete = false;
+
+    /**
+     * Shared mutable fee config object.
+     * Exposed as window.PaymentCollectorModule.feeConfig for external reads.
+     * Properties are updated in-place so the reference stays stable.
+     */
+    const feeConfig = { monthlyFee: 500, admissionFee: 1000 };
+
+    // =========================================
+    // 🔧 UTILITY HELPERS
+    // =========================================
+
+    /**
+     * Gets the auth token from local storage.
+     */
+    function getAuthToken() {
+        return window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
+    }
+
+    /**
+     * Generates a unique transaction ID with year prefix and 6-char alphanumeric suffix.
+     * Format: TXN-YYYY-XXXXXX
+     */
+    function generateTxnId() {
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        var suffix = '';
+        for (var i = 0; i < 6; i++) {
+            suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return 'TXN-' + new Date().getFullYear() + '-' + suffix;
+    }
+
+    /**
+     * Robustly parses a date from various formats returned by Google Sheets.
+     * Handles: ISO strings, Date objects, DD-MM-YYYY, YYYY-MM-DD, epoch numbers.
+     * @param {*} dateVal - Raw date value from candidate record
+     * @returns {Date|null} Parsed Date object or null on failure
+     */
+    function parseAdmissionDate(dateVal) {
+        if (!dateVal) return null;
+        if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal;
+
+        var str = String(dateVal).trim();
+        if (!str || str === '—' || str === 'N/A') return null;
+
+        // Attempt standard JS Date parsing (handles ISO 8601 and most standard formats)
+        var d = new Date(str);
+        if (!isNaN(d.getTime())) return d;
+
+        // Attempt DD-MM-YYYY or DD/MM/YYYY
+        var parts = str.split(/[-\/\.]/);
+        if (parts.length === 3) {
+            var p0 = parseInt(parts[0], 10);
+            var p1 = parseInt(parts[1], 10);
+            var p2 = parseInt(parts[2], 10);
+
+            // DD-MM-YYYY (day first if first number <= 31 and second <= 12)
+            if (p0 <= 31 && p1 <= 12 && p2 >= 1900) {
+                d = new Date(p2, p1 - 1, p0);
+                if (!isNaN(d.getTime())) return d;
+            }
+            // YYYY-MM-DD
+            if (p0 >= 1900 && p1 <= 12 && p2 <= 31) {
+                d = new Date(p0, p1 - 1, p2);
+                if (!isNaN(d.getTime())) return d;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Formats a date to readable DD MMM YYYY string.
+     */
+    function formatDateDisplay(dateObj) {
+        if (!dateObj || isNaN(dateObj.getTime())) return 'N/A';
+        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return dateObj.getDate() + ' ' + months[dateObj.getMonth()] + ' ' + dateObj.getFullYear();
+    }
+
+    // =========================================
+    // ☁️ BOOTSTRAP: CANDIDATE CACHE & FEE CONFIG
+    // =========================================
+
+    /**
+     * Ensures window.MasterCandidateCache is populated.
+     * If empty, performs a FETCH_DIRECTORY call to hydrate the cache.
+     */
+    async function ensureCandidateCache() {
+        if (window.MasterCandidateCache && Array.isArray(window.MasterCandidateCache) && window.MasterCandidateCache.length > 0) {
+            return;
+        }
+
+        try {
+            var res = await window.UIUtils.fetchFromEngine({
+                action: 'FETCH_DIRECTORY',
+                token: getAuthToken()
+            });
+
+            if (res && res.status === 'success' && Array.isArray(res.data)) {
+                window.MasterCandidateCache = res.data;
+            } else {
+                window.MasterCandidateCache = [];
+            }
+        } catch (err) {
+            console.debug('[PaymentCollector] Cache bootstrap failed:', err);
+            window.MasterCandidateCache = [];
+        }
+    }
+
+    /**
+     * Loads fee configuration from the backend GET_FEE_CONFIG endpoint.
+     * Updates the shared feeConfig object properties in-place.
+     */
+    async function bootstrapFeeConfig() {
+        try {
+            var res = await window.UIUtils.fetchFromEngine({
+                action: 'GET_FEE_CONFIG',
+                token: getAuthToken()
+            });
+
+            if (res && res.status === 'success') {
+                feeConfig.monthlyFee = Number(res.monthlyFee) || 500;
+                feeConfig.admissionFee = Number(res.admissionFee) || 1000;
+            }
+        } catch (err) {
+            console.debug('[PaymentCollector] Fee config bootstrap failed:', err);
+        }
+
+        // Update fee settings inputs if they exist
+        var monthlyInput = document.getElementById('feeSettingsMonthly');
+        var admissionInput = document.getElementById('feeSettingsAdmission');
+        if (monthlyInput) monthlyInput.value = feeConfig.monthlyFee;
+        if (admissionInput) admissionInput.value = feeConfig.admissionFee;
+    }
 
     // =========================================
     // 🚀 MODULE LIFECYCLE
     // =========================================
 
     /**
-     * Mounts the Fee Collector view into the DOM container.
-     * Called by AppCore.navigateTo().
-     * @param {HTMLElement} container - The DOM element to render into.
+     * Mounts the Fee Collector interface into the DOM container.
+     * Called by AppCore.navigateTo('paymentCollector').
      */
-    function mount(container) {
+    async function mount(container) {
         _container = container;
         _container.innerHTML = buildShellHTML();
-        attachEventListeners();
-        prefetchPaymentLogs();
-        ensureCandidateCacheReady();
+
+        // Parallel bootstrap: load cache + fee config simultaneously
+        await Promise.all([
+            ensureCandidateCache(),
+            bootstrapFeeConfig()
+        ]);
+
+        setupAutocomplete();
+        buildMonthGrid();
+        updateCheckoutTotal();
+
+        // Handle pending cross-module navigation (from directory viewer "Pay Fees" button)
+        if (_pendingCandidate) {
+            selectCandidate(_pendingCandidate);
+            _pendingCandidate = null;
+        }
     }
 
     /**
-     * Standalone initialization (can be called outside of mount flow).
+     * Init alias — triggers navigation to this module.
+     * Used by external nav buttons: window.PaymentCollectorModule.init()
      */
     function init() {
-        if (_container) {
-            attachEventListeners();
-            prefetchPaymentLogs();
-            ensureCandidateCacheReady();
-        }
-    }
-
-    /**
-     * Cross-Module Bridge: Opens the Fee Collector for a specific candidate.
-     * Called from directoryViewer.js action buttons or external module hooks.
-     *
-     * @param {Object} candidateData - Full candidate record from MasterCandidateCache.
-     */
-    function openCartForCandidate(candidateData) {
-        // If not mounted yet, navigate to this module first
-        if (window.AppCore && typeof window.AppCore.navigateTo === 'function') {
-            // Force navigation to this module's view
+        if (window.AppCore && window.AppCore.navigateTo) {
             window.AppCore.navigateTo('paymentCollector');
         }
-
-        // Wait a tick for DOM to settle after navigation
-        setTimeout(function () {
-            if (!_container) return;
-
-            // Populate the candidate selection
-            _selectedCandidate = candidateData;
-            renderSelectedCandidate();
-
-            // Clear search field and dropdown
-            const searchInput = document.getElementById('pc_search_input');
-            if (searchInput) {
-                searchInput.value = '';
-            }
-            hideDropdown();
-
-            // Set year to current and sync
-            const yearInput = document.getElementById('pc_year_input');
-            if (yearInput) {
-                yearInput.value = new Date().getFullYear().toString();
-            }
-
-            syncCheckboxStates();
-        }, 150);
     }
 
     // =========================================
@@ -118,194 +219,206 @@ window.PaymentCollectorModule = (function () {
     // =========================================
 
     function buildShellHTML() {
-        const currentYear = new Date().getFullYear();
-
         return `
-            <div class="max-w-4xl mx-auto animate-fade-in pb-10 space-y-6">
+            <div id="collectorShell" class="max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
 
-                <!-- Module Header -->
-                <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-                    <div class="flex items-center gap-3 mb-1">
-                        <div class="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center shrink-0">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                <!-- ═══════════════════════════════════════ -->
+                <!-- HEADER BAR                              -->
+                <!-- ═══════════════════════════════════════ -->
+                <div class="relative bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700/80 overflow-hidden">
+                    <div class="absolute -top-20 -right-20 w-60 h-60 rounded-full bg-emerald-500/5 dark:bg-emerald-500/10 blur-3xl pointer-events-none"></div>
+                    <div class="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-brand-500/5 dark:bg-brand-500/10 blur-3xl pointer-events-none"></div>
+                    <div class="relative z-10 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
                         </div>
                         <div>
-                            <h1 class="text-2xl font-extrabold text-slate-800 dark:text-white tracking-tight">Fee Collector</h1>
-                            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Monthly fee billing & payment logging console</p>
+                            <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white">💳 Fee Collector</h1>
+                            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium mt-0.5">Manage monthly fee payments & track outstanding dues</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Step 1: Candidate Search & Selection -->
-                <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-                    <div class="flex items-center gap-2 mb-4">
-                        <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-400 text-xs font-black">1</span>
-                        <h2 class="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Select Candidate</h2>
-                    </div>
+                <!-- ═══════════════════════════════════════ -->
+                <!-- MAIN LAYOUT: 2-COLUMN GRID              -->
+                <!-- ═══════════════════════════════════════ -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                    <!-- Autocomplete Search Field -->
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        </div>
-                        <input type="text" id="pc_search_input"
-                            placeholder="Search by Name, Student ID, or Phone..."
-                            autocomplete="off"
-                            class="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all shadow-inner text-sm">
+                    <!-- ─────────────────────────────────── -->
+                    <!-- LEFT COLUMN: SEARCH + PROFILE CARD  -->
+                    <!-- ─────────────────────────────────── -->
+                    <div class="space-y-4">
 
-                        <!-- Dropdown Results Container -->
-                        <div id="pc_search_dropdown"
-                            class="hidden absolute z-50 left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl max-h-64 overflow-y-auto">
-                        </div>
-                    </div>
+                        <!-- Student Search with Autocomplete -->
+                        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/80 shadow-sm">
+                            <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block">🔍 Search Student</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                    <svg class="h-4.5 w-4.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                </div>
+                                <input type="text" id="collectorSearchInput" placeholder="Name, Student ID, or Mobile..."
+                                    autocomplete="off"
+                                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-inner">
 
-                    <!-- Selected Candidate Card -->
-                    <div id="pc_selected_card" class="hidden mt-4">
-                    </div>
-                </div>
-
-                <!-- Step 2: Billing Period Matrix -->
-                <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
-                        <div class="flex items-center gap-2">
-                            <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 text-xs font-black">2</span>
-                            <h2 class="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Billing Period</h2>
+                                <!-- Autocomplete Dropdown -->
+                                <div id="collectorAutocompleteDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-50 max-h-72 overflow-y-auto">
+                                </div>
+                            </div>
+                            <button onclick="window.PaymentCollectorModule.clearSelection()" class="mt-3 w-full py-2 text-xs font-bold text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all">
+                                ✕ Clear Selection
+                            </button>
                         </div>
 
-                        <!-- Year Input -->
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Target Year:</label>
-                            <input type="text" id="pc_year_input"
-                                value="${currentYear}"
-                                maxlength="4"
-                                placeholder="YYYY"
-                                class="w-24 text-center px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white font-bold text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
-                            <span id="pc_year_error" class="hidden text-xs font-bold text-rose-500">⚠ Invalid year</span>
-                        </div>
-                    </div>
-
-                    <!-- 12-Month Checkbox Matrix -->
-                    <div id="pc_month_grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                        ${MONTH_LABELS.map(function (month, idx) {
-                            return `
-                                <label id="pc_month_label_${idx}" class="relative flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 cursor-pointer hover:border-brand-400 dark:hover:border-brand-500 hover:bg-brand-50/50 dark:hover:bg-brand-900/20 transition-all group select-none">
-                                    <input type="checkbox" id="pc_month_cb_${idx}" data-month-index="${idx}" data-month-name="${month}"
-                                        class="pc-month-checkbox w-5 h-5 rounded-md border-2 border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500 focus:ring-offset-0 cursor-pointer transition-all accent-emerald-600">
-                                    <div class="flex flex-col">
-                                        <span class="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-brand-700 dark:group-hover:text-brand-400 transition-colors">${month}</span>
-                                        <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">₹${BASE_MONTHLY_RATE}</span>
+                        <!-- Selected Student Profile Card -->
+                        <div id="collectorSelectedCard" class="hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm overflow-hidden transition-all duration-300">
+                            <div class="bg-gradient-to-r from-brand-500 to-emerald-500 px-5 py-3">
+                                <span class="text-[10px] font-black text-white/80 uppercase tracking-widest">Selected Student</span>
+                            </div>
+                            <div class="p-5 space-y-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-12 h-12 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center text-brand-600 dark:text-brand-400 font-black text-lg shrink-0">
+                                        <span id="collectorAvatarInitial">?</span>
                                     </div>
-                                    <div id="pc_month_badge_${idx}" class="hidden absolute top-1.5 right-1.5">
-                                        <span class="inline-flex items-center gap-0.5 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 text-[9px] font-black rounded-full border border-emerald-200 dark:border-emerald-800 uppercase tracking-wider">
-                                            <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
-                                            Paid
-                                        </span>
+                                    <div class="min-w-0">
+                                        <h3 id="collectorStudentName" class="font-extrabold text-slate-800 dark:text-white truncate text-base">—</h3>
+                                        <p id="collectorStudentCourse" class="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">—</p>
                                     </div>
-                                </label>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-
-                <!-- Phase 1: Micro-Ledger Display Card -->
-                <div id="collectorAuditPanel" class="hidden border border-slate-800 bg-slate-900/60 rounded-xl p-4 mt-4 animate-fade-in">
-                    <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-3">
-                        <h3 class="text-sm font-bold text-slate-200">📊 Account Statement Summary</h3>
-                        <button id="pc_download_statement_btn" class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold transition-all">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            📥 Download Statement
-                        </button>
-                    </div>
-                    <div id="collectorDueSummaryBar" class="bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold p-3 rounded-lg flex items-center gap-2">
-                        <!-- Dynamic notice bar tracking balance data -->
-                    </div>
-                    <div class="max-h-40 overflow-y-auto mt-2 text-xs">
-                        <table class="w-full text-left border-collapse text-slate-300">
-                            <tbody id="collectorAuditTableBody" class="divide-y divide-slate-700/50">
-                                <!-- Past transactions -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Step 3: Payment Summary & Submission -->
-                <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-                    <div class="flex items-center gap-2 mb-4">
-                        <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-black">3</span>
-                        <h2 class="text-sm font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Payment Summary</h2>
-                    </div>
-
-                    <!-- Live Delta Summary -->
-                    <div id="pc_summary_bar" class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 mb-5">
-                        <div>
-                            <p id="pc_summary_text" class="text-sm font-bold text-slate-600 dark:text-slate-300">
-                                0 New Months Selected. Total Due: ₹0
-                            </p>
-                            <p class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mt-0.5 uppercase tracking-wider">
-                                Base Rate: ₹${BASE_MONTHLY_RATE} / month
-                            </p>
-                        </div>
-                        <div id="pc_total_badge" class="px-5 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-extrabold text-lg tracking-tight transition-all">
-                            ₹0
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 text-[11px]">
+                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
+                                        <span class="text-slate-400 font-bold block mb-0.5">STUDENT ID</span>
+                                        <span id="collectorStudentId" class="font-bold text-slate-700 dark:text-slate-200 break-all">—</span>
+                                    </div>
+                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
+                                        <span class="text-slate-400 font-bold block mb-0.5">ROLL NO</span>
+                                        <span id="collectorRollNo" class="font-bold text-slate-700 dark:text-slate-200">—</span>
+                                    </div>
+                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
+                                        <span class="text-slate-400 font-bold block mb-0.5">MOBILE</span>
+                                        <span id="collectorStudentMobile" class="font-bold text-slate-700 dark:text-slate-200">—</span>
+                                    </div>
+                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
+                                        <span class="text-slate-400 font-bold block mb-0.5">ADMISSION</span>
+                                        <span id="collectorAdmissionDate" class="font-bold text-slate-700 dark:text-slate-200">—</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Submit Button -->
-                    <button id="pc_submit_btn"
-                        disabled
-                        class="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:cursor-not-allowed text-white disabled:text-slate-500 rounded-xl font-bold text-base transition-all transform active:scale-[0.98] shadow-lg flex items-center justify-center gap-2.5">
-                        <svg id="pc_submit_icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <svg id="pc_submit_spinner" class="animate-spin h-5 w-5 hidden" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        <span id="pc_submit_text">Confirm & Log Payment</span>
+                    <!-- ─────────────────────────────────── -->
+                    <!-- RIGHT COLUMN: MONTH GRID + ACTIONS  -->
+                    <!-- ─────────────────────────────────── -->
+                    <div class="lg:col-span-2 space-y-4">
+
+                        <!-- Year Picker + Action Row -->
+                        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/80 shadow-sm">
+                            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                <div class="flex items-center gap-3">
+                                    <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest shrink-0">📅 Calendar Year</label>
+                                    <input type="text" id="collectorYearInput" value="${_calendarYear}" maxlength="4"
+                                        oninput="window.PaymentCollectorModule.handleYearChange(this)"
+                                        class="w-24 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-center text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all text-sm">
+                                    <span id="collectorYearStatus" class="text-xs font-bold text-emerald-500 hidden">✓ Valid</span>
+                                    <span id="collectorYearError" class="text-xs font-bold text-rose-500 hidden">✕ Invalid Year</span>
+                                </div>
+                                <div class="flex items-center gap-2 w-full sm:w-auto">
+                                    <button onclick="window.PaymentCollectorModule.checkDueAndHistory()" id="collectorCheckDueBtn"
+                                        class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-sm active:scale-[0.97]">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                                        Check Due & History
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 12-Month Checkbox Grid -->
+                        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/80 shadow-sm">
+                            <div class="flex items-center justify-between mb-4">
+                                <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Monthly Fee Checkout Grid</label>
+                                <span id="collectorMonthCounter" class="text-[11px] font-bold text-slate-400">0 selected</span>
+                            </div>
+                            <div id="collectorMonthGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                <!-- Month checkboxes injected by buildMonthGrid() -->
+                            </div>
+                        </div>
+
+                        <!-- ═══════════════════════════════ -->
+                        <!-- DUE SUMMARY WARNING BAR         -->
+                        <!-- ═══════════════════════════════ -->
+                        <div id="collectorDueSummaryBar" class="hidden rounded-2xl border-2 overflow-hidden shadow-sm transition-all duration-300">
+                            <!-- Dynamic content injected by backward-chaining algorithm -->
+                        </div>
+
+                        <!-- ═══════════════════════════════ -->
+                        <!-- CHECKOUT SECTION                -->
+                        <!-- ═══════════════════════════════ -->
+                        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm overflow-hidden">
+                            <div class="px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                <div>
+                                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Checkout Total</span>
+                                    <div class="flex items-baseline gap-2">
+                                        <span id="collectorCheckoutTotal" class="text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">₹ 0</span>
+                                        <span id="collectorCheckoutBreakdown" class="text-xs font-bold text-slate-400">(0 months × ₹${feeConfig.monthlyFee})</span>
+                                    </div>
+                                </div>
+                                <button onclick="window.PaymentCollectorModule.submitPayment()" id="collectorSubmitBtn"
+                                    class="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-sm transition-all shadow-lg active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                                    disabled>
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    Submit Payment
+                                    <svg id="collectorSubmitSpinner" class="animate-spin h-4 w-4 hidden" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ═══════════════════════════════════════ -->
+                <!-- FEE SETTINGS ADMIN CARD (Collapsible)   -->
+                <!-- ═══════════════════════════════════════ -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm overflow-hidden">
+                    <button onclick="window.PaymentCollectorModule.toggleFeeSettings()" type="button"
+                        class="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">⚙️</span>
+                            <span class="font-extrabold text-sm text-slate-700 dark:text-slate-200">Global Fee Rate Settings</span>
+                        </div>
+                        <svg id="feeSettingsChevron" class="w-5 h-5 text-slate-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
                     </button>
+                    <div id="collectorFeeSettingsBody" class="hidden border-t border-slate-100 dark:border-slate-700">
+                        <div class="p-5 space-y-4">
+                            <div class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-xl px-4 py-3">
+                                <p class="text-xs font-bold text-amber-700 dark:text-amber-400">
+                                    ⚠️ Changing these rates affects all future payment calculations globally. Existing records remain unmodified.
+                                </p>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="space-y-1.5">
+                                    <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Monthly Fee (₹)</label>
+                                    <input type="number" id="feeSettingsMonthly" min="0" step="1" value="${feeConfig.monthlyFee}"
+                                        class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all text-lg">
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Admission Fee (₹)</label>
+                                    <input type="number" id="feeSettingsAdmission" min="0" step="1" value="${feeConfig.admissionFee}"
+                                        class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all text-lg">
+                                </div>
+                            </div>
+                            <button onclick="window.PaymentCollectorModule.saveFeeConfig()" id="feeSettingsSaveBtn"
+                                class="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm transition-all shadow-sm active:scale-[0.97]">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                Save Fee Configuration
+                            </button>
+                        </div>
+                    </div>
                 </div>
-
             </div>
         `;
-    }
-
-    // =========================================
-    // 🔌 EVENT WIRING
-    // =========================================
-
-    function attachEventListeners() {
-        // Search autocomplete
-        const searchInput = document.getElementById('pc_search_input');
-        if (searchInput) {
-            searchInput.addEventListener('input', handleSearchInput);
-            searchInput.addEventListener('focus', handleSearchInput);
-
-            // Close dropdown on outside click
-            document.addEventListener('click', function (e) {
-                if (!e.target.closest('#pc_search_input') && !e.target.closest('#pc_search_dropdown')) {
-                    hideDropdown();
-                }
-            });
-        }
-
-        // Phase 3: Single-Student Statement Dispatcher Binding
-        const downloadBtn = document.getElementById('pc_download_statement_btn');
-        if (downloadBtn) {
-            downloadBtn.addEventListener('click', downloadStudentStatement);
-        }
-
-        // Year input validator + sync trigger
-        const yearInput = document.getElementById('pc_year_input');
-        if (yearInput) {
-            yearInput.addEventListener('input', handleYearChange);
-        }
-
-        // Month checkbox change listeners
-        const checkboxes = document.querySelectorAll('.pc-month-checkbox');
-        checkboxes.forEach(function (cb) {
-            cb.addEventListener('change', recalculateDelta);
-        });
-
-        // Submit button
-        const submitBtn = document.getElementById('pc_submit_btn');
-        if (submitBtn) {
-            submitBtn.addEventListener('click', handleSubmitPayment);
-        }
     }
 
     // =========================================
@@ -313,772 +426,850 @@ window.PaymentCollectorModule = (function () {
     // =========================================
 
     /**
-     * Ensures the MasterCandidateCache is populated.
-     * If it doesn't exist, attempts to fetch directory data.
+     * Sets up the real-time autocomplete input listener.
+     * Searches window.MasterCandidateCache by STUDENT_NAME, STUDENT_ID, and STUDENT_MOBILE.
      */
-    async function ensureCandidateCacheReady() {
-        if (window.MasterCandidateCache && window.MasterCandidateCache.length > 0) {
-            return; // Cache already warm
-        }
+    function setupAutocomplete() {
+        var input = document.getElementById('collectorSearchInput');
+        var dropdown = document.getElementById('collectorAutocompleteDropdown');
+        if (!input || !dropdown) return;
 
-        try {
-            const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
-            const res = await window.UIUtils.fetchFromEngine({
-                action: "FETCH_DIRECTORY",
-                sheetName: "Main Records",
-                token: token
-            });
+        var debounceTimer = null;
 
-            if (res && res.status === "success" && Array.isArray(res.data)) {
-                window.MasterCandidateCache = res.data;
-            }
-        } catch (err) {
-            console.debug('[PaymentCollector] Failed to warm candidate cache:', err);
-        }
-    }
+        input.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function () {
+                var query = (input.value || '').toLowerCase().trim();
 
-    /**
-     * Handles search input events with debounce.
-     */
-    function handleSearchInput() {
-        clearTimeout(_searchDebounceTimer);
-        _searchDebounceTimer = setTimeout(function () {
-            const query = (document.getElementById('pc_search_input')?.value || '').trim().toLowerCase();
+                if (query.length < 2) {
+                    dropdown.classList.add('hidden');
+                    dropdown.innerHTML = '';
+                    return;
+                }
 
-            if (query.length < 2) {
-                hideDropdown();
-                return;
-            }
+                var cache = window.MasterCandidateCache || [];
+                var matches = [];
 
-            const cache = window.MasterCandidateCache || [];
-            const matches = cache.filter(function (candidate) {
-                const name = (candidate.STUDENT_NAME || '').toLowerCase();
-                const id = String(candidate.STUDENT_ID || '').toLowerCase();
-                const phone = String(candidate.STUDENT_MOBILE || '').toLowerCase();
-                const rlNo = String(candidate.RL_NO || '').toLowerCase();
-                return name.includes(query) || id.includes(query) || phone.includes(query) || rlNo.includes(query);
-            }).slice(0, 15); // Cap at 15 results for performance
+                for (var i = 0; i < cache.length; i++) {
+                    var c = cache[i];
+                    var nameMatch = c.STUDENT_NAME && String(c.STUDENT_NAME).toLowerCase().indexOf(query) !== -1;
+                    var idMatch = c.STUDENT_ID && String(c.STUDENT_ID).toLowerCase().indexOf(query) !== -1;
+                    var mobileMatch = c.STUDENT_MOBILE && String(c.STUDENT_MOBILE).toLowerCase().indexOf(query) !== -1;
 
-            renderDropdown(matches);
-        }, 180);
-    }
+                    // Safe type-casting guard for numeric roll numbers
+                    var rollStr = c.RL_NO !== undefined && c.RL_NO !== null ? String(c.RL_NO).toLowerCase() : '';
+                    var rollMatch = rollStr.indexOf(query) !== -1;
 
-    /**
-     * Renders the autocomplete dropdown with matched candidates.
-     */
-    function renderDropdown(matches) {
-        const dropdown = document.getElementById('pc_search_dropdown');
-        if (!dropdown) return;
+                    if (nameMatch || idMatch || mobileMatch || rollMatch) {
+                        matches.push({ candidate: c, index: i });
+                    }
 
-        if (matches.length === 0) {
-            dropdown.innerHTML = `
-                <div class="px-4 py-6 text-center">
-                    <svg class="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <p class="text-sm font-semibold text-slate-400 dark:text-slate-500">No candidates found</p>
-                </div>
-            `;
-            dropdown.classList.remove('hidden');
-            return;
-        }
+                    if (matches.length >= 15) break; // Cap results to prevent DOM overload
+                }
 
-        let html = '';
-        matches.forEach(function (candidate, idx) {
-            html += `
-                <button type="button"
-                    data-dropdown-index="${idx}"
-                    class="pc-dropdown-item w-full text-left px-4 py-3 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors flex items-center gap-3 ${idx > 0 ? 'border-t border-slate-100 dark:border-slate-700/50' : ''}"
-                    onclick="window.PaymentCollectorModule._selectCandidate(${idx})">
-                    <div class="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                        <span class="text-xs font-black text-slate-500 dark:text-slate-300">${(candidate.STUDENT_NAME || 'N')[0].toUpperCase()}</span>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-bold text-slate-800 dark:text-white truncate">${candidate.STUDENT_NAME || 'Unknown'}</p>
-                        <p class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 truncate">
-                            ID: ${candidate.STUDENT_ID || 'N/A'} · RL: ${candidate.RL_NO || 'N/A'} · 📞 ${candidate.STUDENT_MOBILE || 'N/A'}
-                        </p>
-                    </div>
-                    <svg class="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                </button>
-            `;
+                if (matches.length === 0) {
+                    dropdown.innerHTML = '<div class="px-4 py-3 text-sm text-slate-400 font-medium text-center">No students found</div>';
+                    dropdown.classList.remove('hidden');
+                    return;
+                }
+
+                var html = '';
+                for (var j = 0; j < matches.length; j++) {
+                    var m = matches[j].candidate;
+                    var initial = m.STUDENT_NAME ? m.STUDENT_NAME.charAt(0).toUpperCase() : '?';
+                    html += '<button type="button" onclick="window.PaymentCollectorModule.selectCandidateByIndex(' + matches[j].index + ')"' +
+                        ' class="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left border-b border-slate-100 dark:border-slate-700/50 last:border-0">' +
+                        '<div class="w-9 h-9 rounded-lg bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center text-brand-600 dark:text-brand-400 font-black text-sm shrink-0">' + initial + '</div>' +
+                        '<div class="min-w-0 flex-1">' +
+                        '<p class="text-sm font-bold text-slate-800 dark:text-white truncate">' + (m.STUDENT_NAME || 'Unknown') + '</p>' +
+                        '<p class="text-[11px] text-slate-400 font-medium truncate">' + (m.STUDENT_ID || '') + ' · ' + (m.ENROLLED_COURSE || '') + ' · ' + (m.STUDENT_MOBILE || '') + '</p>' +
+                        '</div>' +
+                        '<svg class="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>' +
+                        '</button>';
+                }
+
+                dropdown.innerHTML = html;
+                dropdown.classList.remove('hidden');
+            }, 150);
         });
 
-        dropdown.innerHTML = html;
-        dropdown.classList.remove('hidden');
+        // Close dropdown on outside click
+        document.addEventListener('click', function (e) {
+            if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
 
-        // Store matches for click handler reference
-        dropdown._currentMatches = matches;
+        // Close dropdown on Escape
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                dropdown.classList.add('hidden');
+                input.blur();
+            }
+        });
     }
 
     /**
-     * Hides the autocomplete dropdown.
+     * Selects a candidate from the autocomplete dropdown by cache index.
      */
-    function hideDropdown() {
-        const dropdown = document.getElementById('pc_search_dropdown');
-        if (dropdown) {
-            dropdown.classList.add('hidden');
-            dropdown.innerHTML = '';
+    function selectCandidateByIndex(index) {
+        var cache = window.MasterCandidateCache || [];
+        if (index >= 0 && index < cache.length) {
+            selectCandidate(cache[index]);
         }
     }
 
     /**
-     * Internal handler — called when a dropdown item is clicked.
-     * @param {number} matchIndex - Index into the current matches array.
+     * Binds a candidate's properties into the module's tracking variables and updates the UI.
+     * @param {Object} candidate - Full candidate record object from MasterCandidateCache
      */
-    function _selectCandidate(matchIndex) {
-        const dropdown = document.getElementById('pc_search_dropdown');
-        if (!dropdown || !dropdown._currentMatches) return;
-
-        const candidate = dropdown._currentMatches[matchIndex];
+    function selectCandidate(candidate) {
         if (!candidate) return;
 
         _selectedCandidate = candidate;
+        _mergedLogs = [];
+        _dueAnalysisComplete = false;
 
-        // Update UI
-        const searchInput = document.getElementById('pc_search_input');
-        if (searchInput) {
-            searchInput.value = '';
-        }
-        hideDropdown();
-        renderSelectedCandidate();
+        // Update search input
+        var input = document.getElementById('collectorSearchInput');
+        if (input) input.value = candidate.STUDENT_NAME || '';
 
-        // Trigger history sync
-        syncCheckboxStates();
+        // Close dropdown
+        var dropdown = document.getElementById('collectorAutocompleteDropdown');
+        if (dropdown) dropdown.classList.add('hidden');
+
+        // Populate profile card
+        var card = document.getElementById('collectorSelectedCard');
+        if (card) card.classList.remove('hidden');
+
+        var initial = candidate.STUDENT_NAME ? candidate.STUDENT_NAME.charAt(0).toUpperCase() : '?';
+        setTextById('collectorAvatarInitial', initial);
+        setTextById('collectorStudentName', candidate.STUDENT_NAME || '—');
+        setTextById('collectorStudentCourse', candidate.ENROLLED_COURSE || '—');
+        setTextById('collectorStudentId', candidate.STUDENT_ID || '—');
+        setTextById('collectorRollNo', candidate.RL_NO || '—');
+        setTextById('collectorStudentMobile', candidate.STUDENT_MOBILE || '—');
+
+        var admDate = parseAdmissionDate(candidate.DATE_OF_ADMISSION);
+        setTextById('collectorAdmissionDate', formatDateDisplay(admDate));
+
+        // Reset the month grid (unlock all, uncheck all)
+        resetMonthGrid();
+        hideDueSummary();
+        updateCheckoutTotal();
     }
 
     /**
-     * Renders the selected candidate card below the search field.
+     * Helper: safely sets text content of an element by ID.
      */
-    function renderSelectedCandidate() {
-        const cardContainer = document.getElementById('pc_selected_card');
-        if (!cardContainer || !_selectedCandidate) return;
-
-        const c = _selectedCandidate;
-        cardContainer.innerHTML = `
-            <div class="flex items-center justify-between gap-4 p-4 rounded-xl bg-brand-50 dark:bg-brand-900/20 border-2 border-brand-200 dark:border-brand-800 animate-fade-in">
-                <div class="flex items-center gap-3">
-                    <div class="w-11 h-11 rounded-full bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center shrink-0">
-                        <span class="text-sm font-black text-brand-700 dark:text-brand-400">${(c.STUDENT_NAME || 'N')[0].toUpperCase()}</span>
-                    </div>
-                    <div>
-                        <p class="text-sm font-extrabold text-slate-800 dark:text-white">${c.STUDENT_NAME || 'Unknown Candidate'}</p>
-                        <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                            ID: <span class="text-brand-600 dark:text-brand-400">${c.STUDENT_ID || 'N/A'}</span>
-                            · Roll: ${c.RL_NO || 'N/A'}
-                            · 📞 ${c.STUDENT_MOBILE || 'N/A'}
-                            · ${c.ENROLLED_COURSE || 'No Class'}
-                        </p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button type="button" id="pc_check_due_btn" onclick="window.PaymentCollectorModule.processDebtCheck()" class="border border-amber-500/30 text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-                        🔍 Check Due & History
-                    </button>
-                    <button type="button" onclick="window.PaymentCollectorModule._clearSelection()"
-                        class="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-all shrink-0" title="Clear Selection">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-            </div>
-        `;
-        cardContainer.classList.remove('hidden');
+    function setTextById(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
     }
 
     /**
-     * Phase 2: Automated Debt Calculator Engine
-     * Triggered by the "Check Due & History" button.
-     * Calculates expected months based on DATE_OF_ADMISSION, compares with PAID logs,
-     * updates the summary readout, and populates the micro-ledger table.
+     * Clears the current selection and resets the form.
      */
-    function processDebtCheck() {
-        if (!_selectedCandidate) return;
-
-        const record = _selectedCandidate;
-        if (!record.DATE_OF_ADMISSION) {
-            if (window.UIUtils) window.UIUtils.showToast("Candidate missing Admission Date.", "error");
-            return;
-        }
-
-        // 1. Parse Historical Timelines & Track Present Boundary
-        const admissionDate = new Date(record.DATE_OF_ADMISSION);
-        const currentDate = new Date();
-
-        if (isNaN(admissionDate.getTime())) {
-            if (window.UIUtils) window.UIUtils.showToast("Invalid Admission Date format.", "error");
-            return;
-        }
-
-        // 2. Calculate Expected Accounting Months
-        const totalExpectedMonths = (currentDate.getFullYear() - admissionDate.getFullYear()) * 12 + 
-                                    (currentDate.getMonth() - admissionDate.getMonth()) + 1;
-
-        // 3. Isolate Paid Months Context
-        const studentId = String(record.STUDENT_ID || '');
-        const studentLogs = _paymentLogs.filter(log => String(log.STUDENT_ID || '') === studentId);
-        
-        let paidCount = 0;
-        studentLogs.forEach(log => {
-            if (String(log.STATUS || '').toUpperCase() === 'PAID') {
-                paidCount++;
-            }
-        });
-
-        // 4. Display Debt Aggregates
-        const monthsDue = Math.max(0, totalExpectedMonths - paidCount);
-        const outstandingBalance = monthsDue * BASE_MONTHLY_RATE;
-
-        const summaryBar = document.getElementById('collectorDueSummaryBar');
-        if (summaryBar) {
-            summaryBar.innerHTML = `Student has been active for ${totalExpectedMonths} months since admission. Logs verify ${paidCount} months paid. Estimated Outstanding Balance: ${monthsDue} Months Due (Approx. ₹${outstandingBalance.toLocaleString('en-IN')}).`;
-        }
-
-        // 5. Populate Mini-Table Grid
-        const tbody = document.getElementById('collectorAuditTableBody');
-        if (tbody) {
-            studentLogs.sort((a, b) => new Date(b.TIMESTAMP) - new Date(a.TIMESTAMP)); // Newest first
-            
-            let html = '';
-            if (studentLogs.length === 0) {
-                html = `<tr><td colspan="4" class="px-3 py-4 text-center text-slate-500">No payment history found.</td></tr>`;
-            } else {
-                studentLogs.forEach(log => {
-                    let formattedDate = 'N/A';
-                    if (log.TIMESTAMP) {
-                        const d = new Date(log.TIMESTAMP);
-                        if (!isNaN(d)) {
-                            formattedDate = String(d.getDate()).padStart(2, '0') + '-' + 
-                                            String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-                                            d.getFullYear();
-                        }
-                    }
-                    
-                    const status = String(log.STATUS || 'UNKNOWN').toUpperCase();
-                    let statusClass = 'text-slate-400';
-                    if (status === 'PAID') statusClass = 'text-emerald-400';
-                    else if (status === 'REFUNDED' || status === 'FAILED') statusClass = 'text-rose-400';
-
-                    html += `
-                        <tr class="hover:bg-slate-800/50 transition-colors border-b border-slate-800 last:border-0">
-                            <td class="px-3 py-2 whitespace-nowrap">${formattedDate}</td>
-                            <td class="px-3 py-2">${log.FEE_PERIOD || 'N/A'}</td>
-                            <td class="px-3 py-2 text-right">₹${parseFloat(log.AMOUNT_COLLECTED || 0).toLocaleString('en-IN')}</td>
-                            <td class="px-3 py-2 text-center font-bold ${statusClass}">${status}</td>
-                        </tr>
-                    `;
-                });
-            }
-            tbody.innerHTML = html;
-        }
-
-        // Reveal the audit panel
-        const panel = document.getElementById('collectorAuditPanel');
-        if (panel) {
-            panel.classList.remove('hidden');
-        }
-    }
-
-    /**
-     * Phase 3: Single-Student Statement Dispatcher
-     * Triggers the direct client-side CSV download of the active student's payment history.
-     */
-    function downloadStudentStatement() {
-        if (!_selectedCandidate) {
-            if (window.UIUtils) window.UIUtils.showToast("No candidate selected.", "error");
-            return;
-        }
-
-        const studentId = String(_selectedCandidate.STUDENT_ID || '');
-        const studentName = String(_selectedCandidate.STUDENT_NAME || 'Unknown').replace(/[^a-zA-Z0-9]/g, '_');
-        
-        // 1. Target Single-Student Cache
-        const studentLogs = _paymentLogs.filter(log => String(log.STUDENT_ID || '') === studentId);
-        
-        if (studentLogs.length === 0) {
-            if (window.UIUtils) window.UIUtils.showToast("No payment history to export.", "error");
-            return;
-        }
-
-        // Sort chronologically (newest first)
-        studentLogs.sort((a, b) => new Date(b.TIMESTAMP) - new Date(a.TIMESTAMP));
-
-        // 2. Map Columns Matrix
-        const headers = ["Transaction ID", "Log Timestamp", "Student ID", "Candidate Name", "Billing Period", "Collection Amount", "Payment Status"];
-        let csvContent = headers.join(",") + "\n";
-
-        studentLogs.forEach(log => {
-            // 3. Format Temporal Cells
-            let formattedDate = '';
-            if (log.TIMESTAMP) {
-                const d = new Date(log.TIMESTAMP);
-                if (!isNaN(d)) {
-                    formattedDate = String(d.getDate()).padStart(2, '0') + '-' + 
-                                    String(d.getMonth() + 1).padStart(2, '0') + '-' + 
-                                    d.getFullYear();
-                }
-            }
-
-            const rowData = [
-                log.TXN_ID || "",
-                formattedDate,
-                log.STUDENT_ID || "",
-                log.STUDENT_NAME || "",
-                log.FEE_PERIOD || "",
-                log.AMOUNT_COLLECTED || "",
-                log.STATUS || ""
-            ].map(cell => {
-                let cellData = String(cell).replace(/"/g, '""');
-                if (cellData.search(/("|,|\n)/g) >= 0) {
-                    cellData = `"${cellData}"`;
-                }
-                return cellData;
-            });
-
-            csvContent += rowData.join(",") + "\n";
-        });
-
-        // 4. Execute Blob Cycle Trigger
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `Statement_${studentName}.csv`);
-        link.style.display = 'none';
-        
-        document.body.appendChild(link);
-        link.click();
-        
-        // Clean garbage collection
-        setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }, 100);
-
-        if (window.UIUtils) window.UIUtils.showToast("Statement report generated.", "success");
-    }
-
-    /**
-     * Clears the current candidate selection and resets the form.
-     */
-    function _clearSelection() {
+    function clearSelection() {
         _selectedCandidate = null;
+        _mergedLogs = [];
+        _dueAnalysisComplete = false;
 
-        const cardContainer = document.getElementById('pc_selected_card');
-        if (cardContainer) {
-            cardContainer.innerHTML = '';
-            cardContainer.classList.add('hidden');
+        var input = document.getElementById('collectorSearchInput');
+        if (input) input.value = '';
+
+        var card = document.getElementById('collectorSelectedCard');
+        if (card) card.classList.add('hidden');
+
+        resetMonthGrid();
+        hideDueSummary();
+        updateCheckoutTotal();
+    }
+
+    // =========================================
+    // 📅 MONTH CHECKBOX GRID
+    // =========================================
+
+    /**
+     * Builds the 12-month checkbox grid inside #collectorMonthGrid.
+     * Each month is a styled card with a checkbox, icon, and label.
+     */
+    function buildMonthGrid() {
+        var grid = document.getElementById('collectorMonthGrid');
+        if (!grid) return;
+
+        var html = '';
+        for (var i = 0; i < 12; i++) {
+            html += '<label id="monthCard_' + i + '" class="relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 cursor-pointer hover:border-brand-400 dark:hover:border-brand-500 transition-all duration-200 select-none group">' +
+                '<input type="checkbox" id="monthCb_' + i + '" data-month-index="' + i + '"' +
+                ' onchange="window.PaymentCollectorModule.handleMonthCheck(' + i + ')"' +
+                ' class="w-5 h-5 rounded border-2 border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500 focus:ring-2 transition-all shrink-0 cursor-pointer accent-emerald-600">' +
+                '<span class="text-lg shrink-0">' + MONTH_ICONS[i] + '</span>' +
+                '<span class="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">' + MONTH_NAMES[i] + '</span>' +
+                '</label>';
         }
 
-        resetAllCheckboxes();
-        recalculateDelta();
+        grid.innerHTML = html;
     }
 
-    // =========================================
-    // 📅 YEAR INPUT HANDLER
-    // =========================================
-
     /**
-     * Handles year input change — validates regex and triggers sync.
+     * Resets all month checkboxes to unchecked and unlocked state.
      */
-    function handleYearChange() {
-        const yearInput = document.getElementById('pc_year_input');
-        const yearError = document.getElementById('pc_year_error');
-        if (!yearInput) return;
-
-        const value = yearInput.value.trim();
-
-        if (YEAR_REGEX.test(value)) {
-            // Valid
-            yearInput.classList.remove('border-rose-500', 'ring-rose-500');
-            yearInput.classList.add('border-slate-200', 'dark:border-slate-700');
-            if (yearError) yearError.classList.add('hidden');
-
-            // Trigger history re-sync for the new year
-            if (_selectedCandidate) {
-                syncCheckboxStates();
+    function resetMonthGrid() {
+        for (var i = 0; i < 12; i++) {
+            var cb = document.getElementById('monthCb_' + i);
+            var card = document.getElementById('monthCard_' + i);
+            if (cb) {
+                cb.checked = false;
+                cb.disabled = false;
             }
-        } else {
-            // Invalid
-            yearInput.classList.add('border-rose-500', 'ring-rose-500');
-            yearInput.classList.remove('border-slate-200', 'dark:border-slate-700');
-            if (yearError) yearError.classList.remove('hidden');
-        }
-
-        recalculateDelta();
-    }
-
-    /**
-     * Returns true if the year input contains a valid 4-digit year.
-     */
-    function isYearValid() {
-        const yearInput = document.getElementById('pc_year_input');
-        if (!yearInput) return false;
-        return YEAR_REGEX.test(yearInput.value.trim());
-    }
-
-    /**
-     * Returns the current year value from the input field.
-     */
-    function getTargetYear() {
-        const yearInput = document.getElementById('pc_year_input');
-        return yearInput ? yearInput.value.trim() : '';
-    }
-
-    // =========================================
-    // 🔒 SAFE-LOCK HISTORY SYNCHRONIZATION ENGINE
-    // =========================================
-
-    /**
-     * Prefetch payment logs into local memory on module mount.
-     */
-    async function prefetchPaymentLogs() {
-        try {
-            const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
-            const res = await window.UIUtils.fetchFromEngine({
-                action: "FETCH_PAYMENT_LOGS",
-                token: token
-            });
-
-            if (res && res.status === "success" && Array.isArray(res.data)) {
-                _paymentLogs = res.data;
+            if (card) {
+                card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 cursor-pointer hover:border-brand-400 dark:hover:border-brand-500 transition-all duration-200 select-none group';
             }
-        } catch (err) {
-            console.debug('[PaymentCollector] Payment log prefetch failed:', err);
         }
     }
 
     /**
-     * syncCheckboxStates()
-     * --------------------------------------------------
-     * Triggered when a candidate is selected OR the billing year changes.
-     *
-     * 1. Fetches latest payment logs from FETCH_PAYMENT_LOGS.
-     * 2. Scans for rows matching the current STUDENT_ID + target year
-     *    where STATUS === 'PAID'.
-     * 3. For every match: sets checkbox .checked = true, .disabled = true,
-     *    and applies locked green badge styling.
-     * 4. Non-matching months are unlocked for new selection.
+     * Handles individual month checkbox change events.
+     * Updates checkout total and submit button state.
      */
-    async function syncCheckboxStates() {
-        // Reset everything first
-        resetAllCheckboxes();
+    function handleMonthCheck(monthIndex) {
+        var cb = document.getElementById('monthCb_' + monthIndex);
+        var card = document.getElementById('monthCard_' + monthIndex);
 
-        if (!_selectedCandidate || !isYearValid()) {
-            recalculateDelta();
-            return;
-        }
-
-        const targetYear = getTargetYear();
-        const studentId = String(_selectedCandidate.STUDENT_ID || '');
-
-        // Refresh payment logs for latest data
-        try {
-            const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
-            const res = await window.UIUtils.fetchFromEngine({
-                action: "FETCH_PAYMENT_LOGS",
-                token: token
-            });
-
-            if (res && res.status === "success" && Array.isArray(res.data)) {
-                _paymentLogs = res.data;
-            }
-        } catch (err) {
-            console.debug('[PaymentCollector] Sync fetch failed, using cached logs:', err);
-        }
-
-        // Scan for paid months matching this student + year
-        const paidMonths = new Set();
-
-        _paymentLogs.forEach(function (log) {
-            const logStudentId = String(log.STUDENT_ID || '');
-            const logStatus = String(log.STATUS || '').toUpperCase();
-            const logPeriod = String(log.FEE_PERIOD || '');
-
-            if (logStudentId === studentId && logStatus === 'PAID') {
-                // FEE_PERIOD format: "MonthName-YYYY" (e.g., "January-2026")
-                const parts = logPeriod.split('-');
-                if (parts.length === 2 && parts[1] === targetYear) {
-                    const monthName = parts[0].trim();
-                    const monthIdx = MONTH_LABELS.indexOf(monthName);
-                    if (monthIdx !== -1) {
-                        paidMonths.add(monthIdx);
-                    }
-                }
-            }
-        });
-
-        // Apply locked states to paid months
-        paidMonths.forEach(function (monthIdx) {
-            const checkbox = document.getElementById('pc_month_cb_' + monthIdx);
-            const label = document.getElementById('pc_month_label_' + monthIdx);
-            const badge = document.getElementById('pc_month_badge_' + monthIdx);
-
-            if (checkbox) {
-                checkbox.checked = true;
-                checkbox.disabled = true;
-            }
-
-            // Apply locked green badge styling
-            if (label) {
-                label.classList.remove(
-                    'border-slate-200', 'dark:border-slate-700',
-                    'bg-slate-50', 'dark:bg-slate-900',
-                    'cursor-pointer', 'hover:border-brand-400', 'dark:hover:border-brand-500',
-                    'hover:bg-brand-50/50', 'dark:hover:bg-brand-900/20'
-                );
-                label.classList.add(
-                    'border-emerald-300', 'dark:border-emerald-800',
-                    'bg-emerald-50', 'dark:bg-emerald-900/20',
-                    'cursor-not-allowed', 'opacity-75'
-                );
-            }
-
-            if (badge) {
-                badge.classList.remove('hidden');
-            }
-        });
-
-        recalculateDelta();
-    }
-
-    /**
-     * Resets all 12 checkboxes to unchecked/enabled state with default styling.
-     */
-    function resetAllCheckboxes() {
-        MONTH_LABELS.forEach(function (month, idx) {
-            const checkbox = document.getElementById('pc_month_cb_' + idx);
-            const label = document.getElementById('pc_month_label_' + idx);
-            const badge = document.getElementById('pc_month_badge_' + idx);
-
-            if (checkbox) {
-                checkbox.checked = false;
-                checkbox.disabled = false;
-            }
-
-            if (label) {
-                label.classList.remove(
-                    'border-emerald-300', 'dark:border-emerald-800',
-                    'bg-emerald-50', 'dark:bg-emerald-900/20',
-                    'cursor-not-allowed', 'opacity-75'
-                );
-                label.classList.add(
-                    'border-slate-200', 'dark:border-slate-700',
-                    'bg-slate-50', 'dark:bg-slate-900',
-                    'cursor-pointer', 'hover:border-brand-400', 'dark:hover:border-brand-500',
-                    'hover:bg-brand-50/50', 'dark:hover:bg-brand-900/20'
-                );
-            }
-
-            if (badge) {
-                badge.classList.add('hidden');
-            }
-        });
-    }
-
-    // =========================================
-    // 📊 LIVE DELTA CALCULATION ENGINE
-    // =========================================
-
-    /**
-     * Reads only non-disabled (newly selected) checkboxes and computes:
-     *   - Count of new months
-     *   - Total amount due (count × BASE_MONTHLY_RATE)
-     * Updates the summary label and total badge.
-     */
-    function recalculateDelta() {
-        let newMonthCount = 0;
-
-        MONTH_LABELS.forEach(function (month, idx) {
-            const checkbox = document.getElementById('pc_month_cb_' + idx);
-            if (checkbox && checkbox.checked && !checkbox.disabled) {
-                newMonthCount++;
-            }
-        });
-
-        const totalDue = newMonthCount * BASE_MONTHLY_RATE;
-
-        // Update summary text
-        const summaryText = document.getElementById('pc_summary_text');
-        if (summaryText) {
-            summaryText.textContent = newMonthCount + ' New Month' + (newMonthCount !== 1 ? 's' : '') + ' Selected. Total Due: ₹' + totalDue.toLocaleString('en-IN');
-        }
-
-        // Update total badge
-        const totalBadge = document.getElementById('pc_total_badge');
-        if (totalBadge) {
-            totalBadge.textContent = '₹' + totalDue.toLocaleString('en-IN');
-
-            if (totalDue > 0) {
-                totalBadge.classList.remove('bg-slate-200', 'dark:bg-slate-700', 'text-slate-500', 'dark:text-slate-400');
-                totalBadge.classList.add('bg-emerald-100', 'dark:bg-emerald-900/40', 'text-emerald-700', 'dark:text-emerald-400');
+        if (cb && card && !cb.disabled) {
+            if (cb.checked) {
+                card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-brand-500 dark:border-brand-400 bg-brand-50 dark:bg-brand-900/20 cursor-pointer transition-all duration-200 select-none group ring-2 ring-brand-500/20';
             } else {
-                totalBadge.classList.add('bg-slate-200', 'dark:bg-slate-700', 'text-slate-500', 'dark:text-slate-400');
-                totalBadge.classList.remove('bg-emerald-100', 'dark:bg-emerald-900/40', 'text-emerald-700', 'dark:text-emerald-400');
+                card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 cursor-pointer hover:border-brand-400 dark:hover:border-brand-500 transition-all duration-200 select-none group';
             }
         }
+
+        updateCheckoutTotal();
+    }
+
+    /**
+     * Year input change handler with /^\d{4}$/ regex guard.
+     */
+    function handleYearChange(input) {
+        var val = input.value.replace(/\D/g, '').slice(0, 4);
+        input.value = val;
+
+        var statusEl = document.getElementById('collectorYearStatus');
+        var errorEl = document.getElementById('collectorYearError');
+
+        if (/^\d{4}$/.test(val)) {
+            _calendarYear = parseInt(val, 10);
+            if (statusEl) { statusEl.classList.remove('hidden'); }
+            if (errorEl) { errorEl.classList.add('hidden'); }
+        } else {
+            if (statusEl) { statusEl.classList.add('hidden'); }
+            if (errorEl) { errorEl.classList.remove('hidden'); }
+        }
+    }
+
+    // =========================================
+    // 📊 CHECKOUT TOTAL CALCULATOR
+    // =========================================
+
+    /**
+     * Scans all month checkboxes, counts newly checked (non-disabled) months,
+     * and updates the live checkout pricing label.
+     * Formula: Newly Checked Months × window.PaymentCollectorModule.feeConfig.monthlyFee
+     */
+    function updateCheckoutTotal() {
+        var newCount = 0;
+        for (var i = 0; i < 12; i++) {
+            var cb = document.getElementById('monthCb_' + i);
+            if (cb && cb.checked && !cb.disabled) {
+                newCount++;
+            }
+        }
+
+        var total = newCount * feeConfig.monthlyFee;
+
+        var totalEl = document.getElementById('collectorCheckoutTotal');
+        if (totalEl) totalEl.textContent = '₹ ' + total.toLocaleString('en-IN');
+
+        var breakdownEl = document.getElementById('collectorCheckoutBreakdown');
+        if (breakdownEl) breakdownEl.textContent = '(' + newCount + ' month' + (newCount !== 1 ? 's' : '') + ' × ₹' + feeConfig.monthlyFee + ')';
+
+        var counterEl = document.getElementById('collectorMonthCounter');
+        if (counterEl) counterEl.textContent = newCount + ' selected';
 
         // Enable/disable submit button
-        const submitBtn = document.getElementById('pc_submit_btn');
+        var submitBtn = document.getElementById('collectorSubmitBtn');
         if (submitBtn) {
-            const canSubmit = newMonthCount > 0 && _selectedCandidate !== null && isYearValid() && !_isSubmitting;
-            submitBtn.disabled = !canSubmit;
+            submitBtn.disabled = (newCount === 0 || !_selectedCandidate);
         }
     }
 
     // =========================================
-    // 📦 PAYLOAD PACKAGE DELIVERY ENGINE
+    // 🔄 BACKWARD-CHAINING WATERFALL ALGORITHM
     // =========================================
 
     /**
-     * Generates a unique transaction trace token.
-     * Format: TXN-YYYY-XXXXX (e.g., TXN-2026-A3F7B)
+     * Master "Check Due & History" handler.
+     * Fetches payment logs for the selected student, executes the backward-chaining
+     * waterfall to detect outstanding dues across year boundaries, locks paid months,
+     * and renders the due summary panel.
      */
-    function generateTxnId() {
-        const year = new Date().getFullYear();
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        let token = '';
-        for (let i = 0; i < 5; i++) {
-            token += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return 'TXN-' + year + '-' + token;
-    }
-
-    /**
-     * Handles the payment submission workflow:
-     * 1. Collects all newly checked (non-disabled) months.
-     * 2. Builds a payment payload array with TXN tokens.
-     * 3. Dispatches via BULK_LOG_PAYMENTS.
-     * 4. On success: clears cart, shows emerald toast.
-     */
-    async function handleSubmitPayment() {
-        if (_isSubmitting) return;
+    async function checkDueAndHistory() {
         if (!_selectedCandidate) {
-            if (window.UIUtils) window.UIUtils.showToast('Please select a candidate first.', 'error');
-            return;
-        }
-        if (!isYearValid()) {
-            if (window.UIUtils) window.UIUtils.showToast('Please enter a valid 4-digit billing year.', 'error');
+            if (window.UIUtils) window.UIUtils.showToast('Please select a student first.', 'error');
             return;
         }
 
-        const targetYear = getTargetYear();
-        const timestamp = new Date().toISOString();
-
-        // Collect newly checked months (non-disabled only)
-        const newPayments = [];
-        MONTH_LABELS.forEach(function (month, idx) {
-            const checkbox = document.getElementById('pc_month_cb_' + idx);
-            if (checkbox && checkbox.checked && !checkbox.disabled) {
-                newPayments.push({
-                    TXN_ID: generateTxnId(),
-                    TIMESTAMP: timestamp,
-                    STUDENT_ID: String(_selectedCandidate.STUDENT_ID || ''),
-                    RL_NO: String(_selectedCandidate.RL_NO || ''),
-                    STUDENT_NAME: String(_selectedCandidate.STUDENT_NAME || ''),
-                    FEE_PERIOD: month + '-' + targetYear,
-                    STATUS: 'PAID',
-                    AMOUNT_COLLECTED: BASE_MONTHLY_RATE
-                });
-            }
-        });
-
-        if (newPayments.length === 0) {
-            if (window.UIUtils) window.UIUtils.showToast('No new months selected for payment.', 'error');
+        var yearInput = document.getElementById('collectorYearInput');
+        var yearVal = yearInput ? yearInput.value : '';
+        if (!/^\d{4}$/.test(yearVal)) {
+            if (window.UIUtils) window.UIUtils.showToast('Please enter a valid 4-digit year.', 'error');
             return;
         }
+        _calendarYear = parseInt(yearVal, 10);
 
-        // Lock UI
-        _isSubmitting = true;
-        setSubmitLoadingState(true);
+        var studentId = String(_selectedCandidate.STUDENT_ID);
+        var checkBtn = document.getElementById('collectorCheckDueBtn');
+
+        if (checkBtn) {
+            checkBtn.disabled = true;
+            checkBtn.innerHTML = '<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analyzing...';
+        }
 
         try {
-            const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
-            const res = await window.UIUtils.fetchFromEngine({
-                action: "BULK_LOG_PAYMENTS",
-                payloadArray: newPayments,
-                token: token
+            _mergedLogs = [];
+            resetMonthGrid();
+
+            var currentYearLogs = await fetchStudentLogs(studentId, _calendarYear);
+            _mergedLogs = currentYearLogs.slice();
+
+            var admDate = parseAdmissionDate(_selectedCandidate.DATE_OF_ADMISSION);
+            var admMonth = admDate ? admDate.getMonth() : 0;
+            var admYear = admDate ? admDate.getFullYear() : _calendarYear;
+
+            var now = new Date();
+            var endMonth;
+            if (_calendarYear === now.getFullYear()) {
+                endMonth = now.getMonth();
+            } else if (_calendarYear < now.getFullYear()) {
+                endMonth = 11;
+            } else {
+                endMonth = 0;
+            }
+
+            var paidMonthsMap = buildPaidMonthsMap(_mergedLogs, _calendarYear);
+
+            // FIX: Check against standard 'YYYY-01' format instead of 'January-YYYY'
+            var januaryKey = _calendarYear + '-01';
+            var januaryPaid = paidMonthsMap[januaryKey] === true;
+            var prevYearLogs = [];
+
+            if (!januaryPaid && admYear < _calendarYear) {
+                prevYearLogs = await fetchStudentLogs(studentId, _calendarYear - 1);
+                _mergedLogs = _mergedLogs.concat(prevYearLogs);
+
+                var prevPaidMap = buildPaidMonthsMap(prevYearLogs, _calendarYear - 1);
+                for (var key in prevPaidMap) {
+                    if (prevPaidMap.hasOwnProperty(key)) {
+                        paidMonthsMap[key] = prevPaidMap[key];
+                    }
+                }
+            }
+
+            lockPaidMonths(paidMonthsMap, _calendarYear);
+
+            var analysis = computeDueAnalysis(paidMonthsMap, admMonth, admYear, _calendarYear, endMonth, prevYearLogs.length > 0 ? _calendarYear - 1 : null);
+            _dueAnalysisComplete = true;
+
+            renderDueSummary(analysis);
+
+            if (window.UIUtils) window.UIUtils.showToast('Payment history loaded for ' + _selectedCandidate.STUDENT_NAME + '.', 'success');
+
+        } catch (err) {
+            console.error('[PaymentCollector] Due check error:', err);
+            if (window.UIUtils) window.UIUtils.showToast('Failed to load payment history: ' + err.message, 'error');
+        } finally {
+            if (checkBtn) {
+                checkBtn.disabled = false;
+                checkBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> Check Due & History';
+            }
+            updateCheckoutTotal();
+        }
+    }
+
+    /**
+     * Fetches a student's payment logs for a specific year via LAZY_FETCH_STUDENT_LOGS.
+     * @param {string} studentId
+     * @param {number} targetYear
+     * @returns {Promise<Array>} Array of payment log objects
+     */
+    async function fetchStudentLogs(studentId, targetYear) {
+        try {
+            var res = await window.UIUtils.fetchFromEngine({
+                action: 'LAZY_FETCH_STUDENT_LOGS',
+                studentId: String(studentId),
+                targetYear: targetYear,
+                token: getAuthToken()
             });
 
-            if (res && (res.success === true || res.status === "success")) {
-                // Success! Show emerald toast
-                const totalAmount = newPayments.length * BASE_MONTHLY_RATE;
-                if (window.UIUtils) {
-                    window.UIUtils.showToast(
-                        '✅ Payment logged! ' + newPayments.length + ' month(s) — ₹' + totalAmount.toLocaleString('en-IN') + ' recorded for ' + _selectedCandidate.STUDENT_NAME + '.',
-                        'success'
-                    );
-                }
+            if (res && res.status === 'success' && Array.isArray(res.data)) {
+                return res.data;
+            }
+            return [];
+        } catch (err) {
+            console.debug('[PaymentCollector] Log fetch failed for year ' + targetYear + ':', err);
+            return [];
+        }
+    }
 
-                // Clear the cart
-                clearCart();
+    /**
+     * Builds a lookup map of paid months from payment log records.
+     * Keys: "MonthName-YYYY" (e.g., "January-2026"), Values: true if PAID.
+     * @param {Array} logs - Payment log records
+     * @param {number} year - The year these logs belong to
+     * @returns {Object} Map of { "MonthName-YYYY": true/false }
+     */
+    function buildPaidMonthsMap(logs, year) {
+        var map = {};
+        for (var i = 0; i < logs.length; i++) {
+            var entry = logs[i];
+            if (entry.STATUS === 'PAID' && entry.FEE_PERIOD) {
+                map[entry.FEE_PERIOD] = true;
+            }
+        }
+        return map;
+    }
 
-                // Re-sync to lock the newly paid months
-                if (_selectedCandidate) {
-                    await syncCheckboxStates();
+    /**
+     * Applies safe-lock styling to paid months in the current year grid.
+     * For any month marked as "PAID" in the merged logs:
+     *   - Sets checkbox .checked = true and .disabled = true
+     *   - Styles the card as a locked green badge
+     * @param {Object} paidMonthsMap - Map from buildPaidMonthsMap()
+     * @param {number} year - The calendar year for the current grid
+     */
+    function lockPaidMonths(paidMonthsMap, year) {
+        for (var i = 0; i < 12; i++) {
+            // FIX: Use padded month lookup to align with database standard
+            var paddedMonth = String(i + 1).padStart(2, '0');
+            var lookupKey = year + '-' + paddedMonth;
+            
+            var cb = document.getElementById('monthCb_' + i);
+            var card = document.getElementById('monthCard_' + i);
+
+            if (paidMonthsMap[lookupKey] === true) {
+                if (cb) {
+                    cb.checked = true;
+                    cb.disabled = true;
                 }
+                if (card) {
+                    card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-emerald-400 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 cursor-not-allowed transition-all duration-200 select-none group opacity-90';
+                }
+            }
+        }
+    }
+
+    /**
+     * Computes the true delta discrepancy between expected months and verified paid rows.
+     *
+     * Walks backward from the current operational month through the timeline:
+     *   - Starts at endMonth of the current calendar year
+     *   - Goes back to admission month of admission year
+     *   - Counts expected months and verified paid months
+     *   - Reports the gap
+     *
+     * @param {Object} paidMonthsMap - Combined paid months map (current + previous year)
+     * @param {number} admMonth - 0-indexed admission month
+     * @param {number} admYear - Year of admission
+     * @param {number} calYear - Current calendar year being analyzed
+     * @param {number} endMonth - Last month to consider (0-indexed, inclusive)
+     * @param {number|null} prevYear - Previous year if cascaded, null otherwise
+     * @returns {Object} Analysis result
+     */
+    function computeDueAnalysis(paidMonthsMap, admMonth, admYear, calYear, endMonth, prevYear) {
+        var expectedMonths = 0;
+        var paidMonths = 0;
+        var unpaidPeriods = [];
+        var paidPeriods = [];
+
+        var startMonthThisYear = (admYear === calYear) ? admMonth : 0;
+        for (var m = startMonthThisYear; m <= endMonth; m++) {
+            expectedMonths++;
+            
+            // FIX: Separate the DB lookup key from the UI display text
+            var paddedMonth = String(m + 1).padStart(2, '0');
+            var lookupKey = calYear + '-' + paddedMonth;
+            var displayKey = MONTH_NAMES[m] + ' ' + calYear;
+
+            if (paidMonthsMap[lookupKey] === true) {
+                paidMonths++;
+                paidPeriods.push(displayKey);
             } else {
-                throw new Error(res.message || 'Server returned an unexpected response.');
+                unpaidPeriods.push(displayKey);
+            }
+        }
+
+        if (prevYear !== null && admYear <= prevYear) {
+            var prevStartMonth = (admYear === prevYear) ? admMonth : 0;
+            for (var p = prevStartMonth; p <= 11; p++) {
+                expectedMonths++;
+                
+                var paddedP = String(p + 1).padStart(2, '0');
+                var prevLookupKey = prevYear + '-' + paddedP;
+                var prevDisplayKey = MONTH_NAMES[p] + ' ' + prevYear;
+
+                if (paidMonthsMap[prevLookupKey] === true) {
+                    paidMonths++;
+                    paidPeriods.push(prevDisplayKey);
+                } else {
+                    unpaidPeriods.push(prevDisplayKey);
+                }
+            }
+        }
+
+        var dueMonths = expectedMonths - paidMonths;
+        var dueAmount = dueMonths * feeConfig.monthlyFee;
+
+        return {
+            expectedMonths: expectedMonths,
+            paidMonths: paidMonths,
+            dueMonths: dueMonths,
+            dueAmount: dueAmount,
+            unpaidPeriods: unpaidPeriods,
+            paidPeriods: paidPeriods,
+            admMonth: admMonth,
+            admYear: admYear,
+            cascaded: prevYear !== null
+        };
+    }
+
+    // =========================================
+    // 🚨 DUE SUMMARY BAR RENDERER
+    // =========================================
+
+    /**
+     * Renders the high-visibility due summary warning panel.
+     * @param {Object} analysis - Output from computeDueAnalysis()
+     */
+    function renderDueSummary(analysis) {
+        var bar = document.getElementById('collectorDueSummaryBar');
+        if (!bar) return;
+
+        var isClean = analysis.dueMonths === 0;
+        var borderColor = isClean ? 'border-emerald-400 dark:border-emerald-500' : 'border-amber-400 dark:border-amber-500';
+        var bgColor = isClean ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-amber-50 dark:bg-amber-900/20';
+        var headerBg = isClean ? 'bg-emerald-500' : 'bg-gradient-to-r from-amber-500 to-rose-500';
+        var headerIcon = isClean
+            ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
+            : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
+        var headerTitle = isClean ? 'All Dues Cleared ✓' : '⚠️ Outstanding Dues Detected';
+
+        bar.className = 'rounded-2xl border-2 overflow-hidden shadow-sm transition-all duration-300 ' + borderColor;
+
+        var unpaidListHtml = '';
+        if (analysis.unpaidPeriods.length > 0) {
+            unpaidListHtml = '<div class="mt-3"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Unpaid Periods</p><div class="flex flex-wrap gap-1.5">';
+            for (var u = 0; u < analysis.unpaidPeriods.length; u++) {
+                unpaidListHtml += '<span class="px-2.5 py-1 bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold rounded-lg border border-rose-200 dark:border-rose-800">' + analysis.unpaidPeriods[u] + '</span>';
+            }
+            unpaidListHtml += '</div></div>';
+        }
+
+        var cascadeNote = '';
+        if (analysis.cascaded) {
+            cascadeNote = '<div class="mt-3 flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">' +
+                '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
+                'Backward cascade: Previous year\'s log sheet was also scanned for continuity.' +
+                '</div>';
+        }
+
+        bar.innerHTML =
+            '<div class="' + headerBg + ' px-5 py-3 flex items-center gap-2 text-white font-extrabold text-sm">' +
+                headerIcon +
+                '<span>' + headerTitle + '</span>' +
+            '</div>' +
+            '<div class="' + bgColor + ' p-5">' +
+                '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">' +
+                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-slate-200 dark:border-slate-700 text-center">' +
+                        '<span class="text-[10px] font-black text-slate-400 uppercase block">Expected</span>' +
+                        '<span class="text-2xl font-black text-slate-800 dark:text-white tabular-nums">' + analysis.expectedMonths + '</span>' +
+                        '<span class="text-[10px] text-slate-400 block">months</span>' +
+                    '</div>' +
+                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-emerald-200 dark:border-emerald-800 text-center">' +
+                        '<span class="text-[10px] font-black text-emerald-500 uppercase block">Paid</span>' +
+                        '<span class="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">' + analysis.paidMonths + '</span>' +
+                        '<span class="text-[10px] text-emerald-400 block">verified</span>' +
+                    '</div>' +
+                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-rose-200 dark:border-rose-800 text-center">' +
+                        '<span class="text-[10px] font-black text-rose-500 uppercase block">Due</span>' +
+                        '<span class="text-2xl font-black text-rose-600 dark:text-rose-400 tabular-nums">' + analysis.dueMonths + '</span>' +
+                        '<span class="text-[10px] text-rose-400 block">months</span>' +
+                    '</div>' +
+                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-amber-200 dark:border-amber-800 text-center">' +
+                        '<span class="text-[10px] font-black text-amber-500 uppercase block">Amount Due</span>' +
+                        '<span class="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums">₹' + analysis.dueAmount.toLocaleString('en-IN') + '</span>' +
+                        '<span class="text-[10px] text-amber-400 block">total</span>' +
+                    '</div>' +
+                '</div>' +
+                unpaidListHtml +
+                cascadeNote +
+                '<div class="mt-3 text-[11px] text-slate-400 font-medium">' +
+                    'Admission: ' + MONTH_NAMES[analysis.admMonth] + ' ' + analysis.admYear +
+                    ' · Fee Rate: ₹' + feeConfig.monthlyFee + '/month' +
+                '</div>' +
+            '</div>';
+
+        bar.classList.remove('hidden');
+    }
+
+    /**
+     * Hides the due summary bar.
+     */
+    function hideDueSummary() {
+        var bar = document.getElementById('collectorDueSummaryBar');
+        if (bar) {
+            bar.classList.add('hidden');
+            bar.innerHTML = '';
+        }
+    }
+
+    // =========================================
+    // 💰 PAYMENT SUBMISSION ENGINE
+    // =========================================
+
+    /**
+     * Collects all newly checked (non-disabled) months, builds payment records,
+     * and submits them via BULK_LOG_PAYMENTS to the sharded backend.
+     */
+    async function submitPayment() {
+        if (_isProcessing) return;
+        if (!_selectedCandidate) {
+            if (window.UIUtils) window.UIUtils.showToast('No student selected.', 'error');
+            return;
+        }
+
+        // Collect newly checked months
+        var newMonths = [];
+        for (var i = 0; i < 12; i++) {
+            var cb = document.getElementById('monthCb_' + i);
+            if (cb && cb.checked && !cb.disabled) {
+                newMonths.push(i);
+            }
+        }
+
+        if (newMonths.length === 0) {
+            if (window.UIUtils) window.UIUtils.showToast('Please select at least one new month to pay for.', 'error');
+            return;
+        }
+
+        // Confirmation gate
+        var totalAmount = newMonths.length * feeConfig.monthlyFee;
+        var confirmMsg = 'Confirm payment of ₹' + totalAmount.toLocaleString('en-IN') + ' for ' + newMonths.length + ' month(s) for ' + _selectedCandidate.STUDENT_NAME + '?';
+        if (!confirm(confirmMsg)) return;
+
+        _isProcessing = true;
+        var submitBtn = document.getElementById('collectorSubmitBtn');
+        var spinner = document.getElementById('collectorSubmitSpinner');
+
+        if (submitBtn) submitBtn.disabled = true;
+        if (spinner) spinner.classList.remove('hidden');
+
+        try {
+            var timestamp = new Date().toISOString();
+            var payloadArray = [];
+
+            for (var j = 0; j < newMonths.length; j++) {
+                var monthIdx = newMonths[j];
+                // Ensure months map as "01", "02" ... "12"
+                var paddedMonth = String(monthIdx + 1).padStart(2, '0');
+                var feePeriodStr = _calendarYear + '-' + paddedMonth; // e.g., "2026-06"
+
+                payloadArray.push({
+                    TXN_ID: generateTxnId(),
+                    TIMESTAMP: timestamp,
+                    STUDENT_ID: String(_selectedCandidate.STUDENT_ID),
+                    RL_NO: String(_selectedCandidate.RL_NO || ''),
+                    STUDENT_NAME: String(_selectedCandidate.STUDENT_NAME || ''),
+                    FEE_PERIOD: feePeriodStr,
+                    STATUS: 'PAID',
+                    AMOUNT_COLLECTED: feeConfig.monthlyFee
+                });
+            }
+
+            var res = await window.UIUtils.fetchFromEngine({
+                action: 'BULK_LOG_PAYMENTS',
+                payloadArray: payloadArray,
+                token: getAuthToken()
+            });
+
+            if (res && (res.status === 'success' || res.success === true)) {
+                if (window.UIUtils) window.UIUtils.showToast('✅ ' + newMonths.length + ' payment(s) logged successfully!', 'success');
+
+                // Lock the newly paid months as green badges (optimistic UI)
+                for (var k = 0; k < newMonths.length; k++) {
+                    var mIdx = newMonths[k];
+                    var lockCb = document.getElementById('monthCb_' + mIdx);
+                    var lockCard = document.getElementById('monthCard_' + mIdx);
+
+                    if (lockCb) {
+                        lockCb.checked = true;
+                        lockCb.disabled = true;
+                    }
+                    if (lockCard) {
+                        lockCard.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-emerald-400 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 cursor-not-allowed transition-all duration-200 select-none group opacity-90';
+                    }
+                }
+
+                // Re-run due analysis to reflect changes
+                if (_dueAnalysisComplete) {
+                    await checkDueAndHistory();
+                }
+
+                updateCheckoutTotal();
+            } else {
+                throw new Error((res && res.message) || 'Server returned an error response.');
+            }
+
+        } catch (err) {
+            console.error('[PaymentCollector] Submit error:', err);
+            if (window.UIUtils) window.UIUtils.showToast('Payment submission failed: ' + err.message, 'error');
+        } finally {
+            _isProcessing = false;
+            if (spinner) spinner.classList.add('hidden');
+            updateCheckoutTotal();
+        }
+    }
+
+    // =========================================
+    // ⚙️ FEE SETTINGS ADMIN CARD
+    // =========================================
+
+    /**
+     * Toggles the collapsible fee settings panel.
+     */
+    function toggleFeeSettings() {
+        var body = document.getElementById('collectorFeeSettingsBody');
+        var chevron = document.getElementById('feeSettingsChevron');
+        _feeSettingsOpen = !_feeSettingsOpen;
+
+        if (body) {
+            if (_feeSettingsOpen) {
+                body.classList.remove('hidden');
+            } else {
+                body.classList.add('hidden');
+            }
+        }
+        if (chevron) {
+            chevron.style.transform = _feeSettingsOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+    }
+
+    /**
+     * Reads the fee settings inputs and dispatches SET_FEE_CONFIG to the backend.
+     * Updates the shared feeConfig object on success.
+     */
+    async function saveFeeConfig() {
+        var monthlyInput = document.getElementById('feeSettingsMonthly');
+        var admissionInput = document.getElementById('feeSettingsAdmission');
+        var saveBtn = document.getElementById('feeSettingsSaveBtn');
+
+        if (!monthlyInput || !admissionInput) return;
+
+        var newMonthly = Number(monthlyInput.value);
+        var newAdmission = Number(admissionInput.value);
+
+        if (isNaN(newMonthly) || newMonthly < 0) {
+            if (window.UIUtils) window.UIUtils.showToast('Monthly fee must be a non-negative number.', 'error');
+            return;
+        }
+        if (isNaN(newAdmission) || newAdmission < 0) {
+            if (window.UIUtils) window.UIUtils.showToast('Admission fee must be a non-negative number.', 'error');
+            return;
+        }
+
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+        }
+
+        try {
+            var res = await window.UIUtils.fetchFromEngine({
+                action: 'SET_FEE_CONFIG',
+                monthlyFee: newMonthly,
+                admissionFee: newAdmission,
+                token: getAuthToken()
+            });
+
+            if (res && res.status === 'success') {
+                // Update the shared mutable feeConfig object properties in-place
+                feeConfig.monthlyFee = newMonthly;
+                feeConfig.admissionFee = newAdmission;
+
+                updateCheckoutTotal();
+
+                if (window.UIUtils) window.UIUtils.showToast('Fee configuration saved successfully.', 'success');
+            } else {
+                throw new Error((res && res.message) || 'Server returned an error.');
             }
         } catch (err) {
-            console.error('[PaymentCollector] Submission Error:', err);
-            if (window.UIUtils) window.UIUtils.showToast('Payment failed: ' + err.message, 'error');
+            console.error('[PaymentCollector] Fee config save error:', err);
+            if (window.UIUtils) window.UIUtils.showToast('Failed to save fee config: ' + err.message, 'error');
         } finally {
-            _isSubmitting = false;
-            setSubmitLoadingState(false);
-        }
-    }
-
-    /**
-     * Toggles the submit button between loading and ready states.
-     */
-    function setSubmitLoadingState(isLoading) {
-        const btnText = document.getElementById('pc_submit_text');
-        const btnIcon = document.getElementById('pc_submit_icon');
-        const btnSpinner = document.getElementById('pc_submit_spinner');
-        const submitBtn = document.getElementById('pc_submit_btn');
-
-        if (isLoading) {
-            if (btnText) btnText.textContent = 'Processing Payment...';
-            if (btnIcon) btnIcon.classList.add('hidden');
-            if (btnSpinner) btnSpinner.classList.remove('hidden');
-            if (submitBtn) submitBtn.disabled = true;
-        } else {
-            if (btnText) btnText.textContent = 'Confirm & Log Payment';
-            if (btnIcon) btnIcon.classList.remove('hidden');
-            if (btnSpinner) btnSpinner.classList.add('hidden');
-            recalculateDelta(); // Re-evaluates button state
-        }
-    }
-
-    /**
-     * Clears the cart inputs but keeps the candidate selected.
-     * After a successful payment, the user can continue billing
-     * the same candidate for different months/years.
-     */
-    function clearCart() {
-        // Uncheck all non-disabled checkboxes
-        MONTH_LABELS.forEach(function (month, idx) {
-            const checkbox = document.getElementById('pc_month_cb_' + idx);
-            if (checkbox && !checkbox.disabled) {
-                checkbox.checked = false;
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Save Fee Configuration';
             }
-        });
-
-        recalculateDelta();
+        }
     }
 
     // =========================================
-    // 🔗 PUBLIC API
+    // 🔀 CROSS-MODULE BRIDGE
     // =========================================
 
+    /**
+     * Global callback entry gate for cross-module navigation.
+     * Called from directoryViewer.js "Pay Fees" button:
+     *   window.PaymentCollectorModule.openCartForCandidate(candidateRecordObject)
+     *
+     * Forces the screen to activate the Fee Collector workspace and pre-populates
+     * the student profile parameters into form variables instantly.
+     *
+     * @param {Object} candidateData - Full candidate record from MasterCandidateCache
+     */
+    async function openCartForCandidate(candidateData) {
+        if (!candidateData) return;
+
+        _pendingCandidate = candidateData;
+
+        // Navigate to this module — mount() will pick up _pendingCandidate
+        if (window.AppCore && window.AppCore.navigateTo) {
+            await window.AppCore.navigateTo('paymentCollector');
+        }
+
+        // If already mounted (navigateTo was a no-op because module was active),
+        // apply the selection immediately since mount() won't run again
+        if (_pendingCandidate && document.getElementById('collectorSearchInput')) {
+            selectCandidate(_pendingCandidate);
+            _pendingCandidate = null;
+        }
+    }
+
+    // =========================================
+    // 📦 PUBLIC API
+    // =========================================
     return {
         mount: mount,
         init: init,
         openCartForCandidate: openCartForCandidate,
-
-        // Internal hooks exposed for inline onclick handlers
-        _selectCandidate: _selectCandidate,
-        _clearSelection: _clearSelection,
-        processDebtCheck: processDebtCheck
+        selectCandidateByIndex: selectCandidateByIndex,
+        clearSelection: clearSelection,
+        handleMonthCheck: handleMonthCheck,
+        handleYearChange: handleYearChange,
+        checkDueAndHistory: checkDueAndHistory,
+        submitPayment: submitPayment,
+        toggleFeeSettings: toggleFeeSettings,
+        saveFeeConfig: saveFeeConfig,
+        feeConfig: feeConfig
     };
 
 })();

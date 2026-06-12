@@ -697,8 +697,66 @@ window.NewCandidateModule = (function () {
             // Fire queue processor to catch any resurrected payloads
             processNextQueueItem();
 
+            // ✨ Seed the Payable Amount field with the centralized admission fee
+            loadAndApplyFeeConfig();
+
         } catch (error) {
             console.debug('[NewCandidateModule] Mounting caught structural error:', error);
+        }
+    }
+
+    /**
+     * loadAndApplyFeeConfig()
+     * --------------------------------------------------
+     * Fetches the active fee configuration from the backend GET_FEE_CONFIG
+     * endpoint and auto-seeds the "Total Payable Amount" field with the
+     * centralized admissionFee from Script Properties.
+     *
+     * Resolution priority:
+     *   1. window.PaymentCollectorModule.feeConfig (in-memory, zero network cost)
+     *   2. GET_FEE_CONFIG backend fetch (if PaymentCollectorModule not loaded yet)
+     *   3. Silent fallback to 1000 on any network/parse failure
+     *
+     * The field remains fully editable by admin after auto-population.
+     */
+    async function loadAndApplyFeeConfig() {
+        let admissionFee = 1000; // Safe default fallback
+
+        try {
+            // Priority 1: Read from PaymentCollectorModule runtime cache (zero network cost)
+            if (
+                window.PaymentCollectorModule &&
+                typeof window.PaymentCollectorModule.feeConfig === 'object' &&
+                window.PaymentCollectorModule.feeConfig.admissionFee > 0
+            ) {
+                admissionFee = window.PaymentCollectorModule.feeConfig.admissionFee;
+                console.debug('[NewCandidateModule] Fee config sourced from PaymentCollectorModule cache:', admissionFee);
+            } else {
+                // Priority 2: Fetch directly from GET_FEE_CONFIG backend endpoint
+                const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
+                const res = await window.UIUtils.fetchFromEngine({
+                    action: 'GET_FEE_CONFIG',
+                    token: token
+                });
+
+                if (res && res.success === true && res.config) {
+                    const fetched = Number(res.config.admissionFee);
+                    if (!isNaN(fetched) && fetched >= 0) {
+                        admissionFee = fetched;
+                    }
+                    console.debug('[NewCandidateModule] Fee config fetched from backend:', res.config);
+                }
+            }
+        } catch (err) {
+            // Priority 3: Silent fallback — do not disrupt form render
+            console.debug('[NewCandidateModule] loadAndApplyFeeConfig failed gracefully, using default:', err);
+        }
+
+        // Seed the Payable Amount input with the resolved admissionFee
+        const payableField = document.getElementById('field_payable_amount');
+        if (payableField && !payableField.value) {
+            // Only auto-fill if the field is still empty (don't overwrite admin edits)
+            payableField.value = admissionFee;
         }
     }
 
@@ -1287,6 +1345,7 @@ window.NewCandidateModule = (function () {
         pruneSyncJob,
         discardFailedJobs,
         updateOperationsBadge,
+        loadAndApplyFeeConfig,  // Exposed for manual re-sync (e.g., after PaymentCollectorModule loads later)
         state
     };
 

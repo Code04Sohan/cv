@@ -41,7 +41,7 @@ const SHEET_TEMPLATES = {
     'STUDENT_PHOTO_URL', 'STUDENT_SIGNATURE_URL', 'TIMESTAMP'
   ],
 
-  // Payment Ledger Row Layout (Fee Collector Module)
+  // Payment Ledger Row Layout (Fee Collector Module — Annual Sharded Tabs: Logs_YYYY)
   PaymentLog: [
     'TXN_ID', 'TIMESTAMP', 'STUDENT_ID', 'RL_NO', 'STUDENT_NAME', 'FEE_PERIOD', 'STATUS', 'AMOUNT_COLLECTED'
   ]
@@ -154,13 +154,24 @@ function doPost(e) {
       case "DELETE_RECORD":
         return handleDeleteRecord(payload);
 
-      // Payment Ledger Module Routes
-      case "FETCH_PAYMENT_LOGS":
-        return handleFetchPaymentLogs();
+      // ====================================================
+      // 💳 SHARDED PAYMENT LEDGER MODULE ROUTES (Logs_YYYY)
+      // ====================================================
+      case "GET_FEE_CONFIG":
+        return handleGetFeeConfig();
+
+      case "SET_FEE_CONFIG":
+        return handleSetFeeConfig(payload.monthlyFee, payload.admissionFee);
 
       case "BULK_LOG_PAYMENTS":
         return handleBulkLogPayments(payload.payloadArray);
-        
+
+      case "LAZY_FETCH_STUDENT_LOGS":
+        return handleLazyFetchStudentLogs(payload.studentId, payload.targetYear);
+
+      case "FETCH_STATEMENT_RANGE":
+        return handleFetchStatementRange(payload.startDate, payload.endDate);
+
       default:
         return createResponse({ status: "error", message: "Unknown action." });
     }
@@ -542,109 +553,121 @@ function uploadCandidateBase64(base64Str, baseFilename) {
 
 /**
  * ==========================================
- * 💳 MODULE 8: PAYMENT LEDGER ENGINE
+ * 💳 MODULE 8: SHARDED PAYMENT LEDGER ENGINE
  * ==========================================
- * Handles fee collection logging via the "Payment_Logs" sheet.
- * Provides high-speed batch writes and full ledger reads.
- */
-
-const PAYMENT_SHEET_NAME = "Payment_Logs";
-
-/**
- * Retrieves or auto-creates the Payment_Logs sheet with schema headers.
- * Includes auto-healing: if the sheet exists but is empty, headers are re-injected.
- * @returns {GoogleAppsScript.Spreadsheet.Sheet} The Payment_Logs sheet reference.
- */
-function getOrCreatePaymentSheet() {
-  const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  let sheet = spreadsheet.getSheetByName(PAYMENT_SHEET_NAME);
-
-  if (!sheet) {
-    sheet = spreadsheet.insertSheet(PAYMENT_SHEET_NAME);
-    const headers = SHEET_TEMPLATES.PaymentLog;
-    sheet.appendRow(headers);
-    sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-  }
-
-  // Auto-Healing: If the sheet exists but is completely empty, re-inject headers
-  if (sheet.getLastRow() === 0) {
-    const headers = SHEET_TEMPLATES.PaymentLog;
-    sheet.appendRow(headers);
-    sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-  }
-
-  return sheet;
-}
-
-/**
- * FETCH_PAYMENT_LOGS Handler
- * --------------------------------------------------
- * Comprehensive data extraction utility targeting the "Payment_Logs" sheet.
- * Reads the entire data matrix from Row 2 down to getLastRow(),
- * maps values to clean JSON objects with precise schema keys:
- *   TXN_ID, TIMESTAMP, STUDENT_ID, RL_NO, STUDENT_NAME, FEE_PERIOD, STATUS, AMOUNT_COLLECTED
+ * Annual table sharding system using dynamic "Logs_YYYY" tab names.
+ * Provides:
+ *   - Fee configuration get/set via Script Properties
+ *   - High-speed sharded bulk payment writer
+ *   - Targeted single-student log fetcher with backward year traversal
  *
- * Routing Trigger: case "FETCH_PAYMENT_LOGS" in doPost()
- * Returns: { success: true, status: "success", data: logsArray }
+ * Schema per shard tab: ['TXN_ID', 'TIMESTAMP', 'STUDENT_ID', 'RL_NO', 'STUDENT_NAME', 'FEE_PERIOD', 'STATUS', 'AMOUNT_COLLECTED']
+ * Tab naming convention: "Logs_" + YYYY (e.g., Logs_2025, Logs_2026)
+ * Convention over Configuration: Tab names are NEVER stored in Script Properties.
  */
-function handleFetchPaymentLogs() {
+
+/**
+ * GET_FEE_CONFIG Handler
+ * --------------------------------------------------
+ * Reads the global fee rate configuration from PropertiesService.getScriptProperties().
+ * Returns fallback defaults of 500 (monthly) and 1000 (admission) if the keys
+ * have never been initialized, ensuring zero-config first-run behavior.
+ *
+ * Routing Trigger: case "GET_FEE_CONFIG" in doPost()
+ *
+ * Script Properties Keys:
+ *   - MONTHLY_FEE: The per-month tuition fee charged to students
+ *   - ADMISSION_FEE: The one-time enrollment fee charged at admission
+ *
+ * @returns {Object} { status: "success", monthlyFee: Number, admissionFee: Number }
+ */
+function handleGetFeeConfig() {
   try {
-    const sheet = getOrCreatePaymentSheet();
-    const lastRow = sheet.getLastRow();
+    var props = getProps();
+    var rawMonthly = props.getProperty("MONTHLY_FEE");
+    var rawAdmission = props.getProperty("ADMISSION_FEE");
 
-    // If only headers exist (or sheet is empty), return empty dataset
-    if (lastRow <= 1) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ success: true, status: "success", data: [] })
-      ).setMimeType(ContentService.MimeType.JSON);
-    }
+    // Apply fallback defaults if keys are uninitialized (null)
+    var monthlyFee = (rawMonthly !== null && rawMonthly !== "") ? Number(rawMonthly) : 500;
+    var admissionFee = (rawAdmission !== null && rawAdmission !== "") ? Number(rawAdmission) : 1000;
 
-    const schema = SHEET_TEMPLATES.PaymentLog;
-    const dataRange = sheet.getRange(2, 1, lastRow - 1, schema.length);
-    const allValues = dataRange.getValues();
+    // Guard against NaN from corrupted property values
+    if (isNaN(monthlyFee)) monthlyFee = 500;
+    if (isNaN(admissionFee)) admissionFee = 1000;
 
-    const logsArray = [];
-    for (let i = 0; i < allValues.length; i++) {
-      const row = allValues[i];
-      const record = {};
-      for (let j = 0; j < schema.length; j++) {
-        const key = schema[j];
-        const cellValue = row[j];
-
-        // Coerce Date objects to ISO strings for clean frontend parsing
-        if (key === 'TIMESTAMP' && cellValue instanceof Date) {
-          record[key] = cellValue.toISOString();
-        } else {
-          record[key] = cellValue;
-        }
-      }
-      logsArray.push(record);
-    }
-
-    return ContentService.createTextOutput(
-      JSON.stringify({ success: true, status: "success", data: logsArray })
-    ).setMimeType(ContentService.MimeType.JSON);
+    return createResponse({
+      status: "success",
+      monthlyFee: monthlyFee,
+      admissionFee: admissionFee
+    });
   } catch (error) {
-    return ContentService.createTextOutput(
-      JSON.stringify({
-        success: false,
-        status: "error",
-        message: "Payment Ledger Fetch Error: " + error.toString()
-      })
-    ).setMimeType(ContentService.MimeType.JSON);
+    return createResponse({
+      status: "error",
+      message: "Fee Config Read Error: " + error.toString()
+    });
   }
 }
 
 /**
- * BULK_LOG_PAYMENTS Handler (Transactional Bulk-Write Engine)
+ * SET_FEE_CONFIG Handler
  * --------------------------------------------------
- * Accepts an incoming array of month payment objects, maps them into
- * a flat 2D rows matrix aligned with the PaymentLog sheet columns,
- * finds the current lastRow offset value, and injects the entire batch
- * simultaneously using a single atomic execution boundary:
- *   sheet.getRange(lastRow + 1, 1, matrix.length, schema.length).setValues(matrix);
+ * Casts incoming parameters to clean Numbers, validates them,
+ * writes them to the Cloud Script Properties keys (MONTHLY_FEE, ADMISSION_FEE),
+ * and returns a success confirmation token.
+ *
+ * Routing Trigger: case "SET_FEE_CONFIG" in doPost()
+ *
+ * @param {*} monthlyFee - The new monthly fee value (will be cast to Number)
+ * @param {*} admissionFee - The new admission fee value (will be cast to Number)
+ * @returns {Object} { status: "success", message: "...", monthlyFee: Number, admissionFee: Number }
+ */
+function handleSetFeeConfig(monthlyFee, admissionFee) {
+  try {
+    // Cast to clean Numbers — strips strings, booleans, etc.
+    var cleanMonthly = Number(monthlyFee);
+    var cleanAdmission = Number(admissionFee);
+
+    // Validation Gate: Reject NaN or negative values
+    if (isNaN(cleanMonthly) || cleanMonthly < 0) {
+      return createResponse({
+        status: "error",
+        message: "Invalid monthly fee value. Must be a non-negative number."
+      });
+    }
+    if (isNaN(cleanAdmission) || cleanAdmission < 0) {
+      return createResponse({
+        status: "error",
+        message: "Invalid admission fee value. Must be a non-negative number."
+      });
+    }
+
+    // Persist to Cloud Script Properties
+    var props = getProps();
+    props.setProperty("MONTHLY_FEE", String(cleanMonthly));
+    props.setProperty("ADMISSION_FEE", String(cleanAdmission));
+
+    return createResponse({
+      status: "success",
+      message: "Fee configuration updated successfully.",
+      monthlyFee: cleanMonthly,
+      admissionFee: cleanAdmission
+    });
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Fee Config Write Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * BULK_LOG_PAYMENTS Handler (Sharded Transactional Bulk-Writer)
+ * --------------------------------------------------
+ * Accepts an incoming array of month payment objects, dynamically resolves
+ * the target annual shard tab name as "Logs_" + transactionYear, auto-creates
+ * the tab with schema headers if it doesn't exist, then injects all rows
+ * simultaneously using a single high-speed .setValues() call to bypass
+ * timeout gates.
  *
  * Routing Trigger: case "BULK_LOG_PAYMENTS" in doPost()
  *
@@ -673,16 +696,76 @@ function handleBulkLogPayments(payloadArray) {
       });
     }
 
-    const sheet = getOrCreatePaymentSheet();
-    const schema = SHEET_TEMPLATES.PaymentLog;
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var schema = SHEET_TEMPLATES.PaymentLog;
 
-    // Build the 2D matrix aligned to schema column order
-    const matrix = [];
-    for (let i = 0; i < payloadArray.length; i++) {
-      const entry = payloadArray[i];
-      const row = [];
-      for (let j = 0; j < schema.length; j++) {
-        const key = schema[j];
+    // -------------------------------------------------------
+    // PHASE A: Parse the transaction year from FEE_PERIOD.
+    // Handles both "2026-06" (New Standard) and "June-2026" (Legacy)
+    // -------------------------------------------------------
+    var transactionYear = null;
+    var firstEntry = payloadArray[0];
+
+    if (firstEntry.FEE_PERIOD && typeof firstEntry.FEE_PERIOD === 'string') {
+      var periodParts = firstEntry.FEE_PERIOD.split("-");
+      if (periodParts.length >= 2) {
+        // First try the new standard (YYYY-MM)
+        var parsedYear = parseInt(periodParts[0], 10);
+        
+        // If it fails, try the legacy standard (Month-YYYY)
+        if (isNaN(parsedYear) || parsedYear < 2000) {
+            parsedYear = parseInt(periodParts[periodParts.length - 1], 10);
+        }
+
+        if (!isNaN(parsedYear) && parsedYear >= 2000 && parsedYear <= 2099) {
+          transactionYear = parsedYear;
+        }
+      }
+    }
+
+    // Fallback: derive year from TIMESTAMP
+    if (transactionYear === null && firstEntry.TIMESTAMP) {
+      var tsDate = new Date(firstEntry.TIMESTAMP);
+      if (!isNaN(tsDate.getTime())) {
+        transactionYear = tsDate.getFullYear();
+      }
+    }
+
+    // Ultimate fallback: current server year
+    if (transactionYear === null) {
+      transactionYear = new Date().getFullYear();
+    }
+
+    // -------------------------------------------------------
+    // PHASE B: Resolve target shard sheet — Convention over Configuration
+    // -------------------------------------------------------
+    var sheetName = "Logs_" + transactionYear;
+    var sheet = ss.getSheetByName(sheetName);
+
+    // Auto-Creation Guard: If shard tab doesn't exist, create it with schema headers
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.appendRow(schema);
+      sheet.setFrozenRows(1);
+      sheet.getRange(1, 1, 1, schema.length).setFontWeight("bold");
+    }
+
+    // Auto-Healing: If shard exists but is completely empty, re-inject headers
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(schema);
+      sheet.setFrozenRows(1);
+      sheet.getRange(1, 1, 1, schema.length).setFontWeight("bold");
+    }
+
+    // -------------------------------------------------------
+    // PHASE C: Build the 2D matrix aligned to schema column order
+    // -------------------------------------------------------
+    var matrix = [];
+    for (var i = 0; i < payloadArray.length; i++) {
+      var entry = payloadArray[i];
+      var row = [];
+      for (var j = 0; j < schema.length; j++) {
+        var key = schema[j];
         if (key === 'TIMESTAMP' && entry[key]) {
           // Ensure timestamps are stored as proper Date objects for sheet formatting
           row.push(new Date(entry[key]));
@@ -693,23 +776,211 @@ function handleBulkLogPayments(payloadArray) {
       matrix.push(row);
     }
 
-    // ⚡ Atomic Batch Write: Single execution boundary for maximum throughput
-    // This avoids N individual appendRow calls, collapsing them into one I/O operation.
-    const lastRow = sheet.getLastRow();
+    // -------------------------------------------------------
+    // PHASE D: ⚡ Atomic Batch Write — Single execution boundary
+    // -------------------------------------------------------
+    var lastRow = sheet.getLastRow();
     sheet.getRange(lastRow + 1, 1, matrix.length, schema.length).setValues(matrix);
-
+    
     return createResponse({
       status: "success",
       success: true,
-      message: "Successfully logged " + matrix.length + " payment transaction(s).",
-      rowsWritten: matrix.length
+      message: "Successfully logged " + matrix.length + " payment transaction(s) to " + sheetName + ".",
+      rowsWritten: matrix.length,
+      targetSheet: sheetName
     });
+    
   } catch (error) {
     return createResponse({
       status: "error",
       success: false,
       message: "Bulk Payment Write Error: " + error.toString()
     });
+  }
+}
+
+/**
+ * LAZY_FETCH_STUDENT_LOGS Handler (Targeted Single-Candidate Log Fetcher)
+ * --------------------------------------------------
+ * Fetches payment log records for a single specific student from the annual
+ * shard tab matching the targetYear parameter. Uses a precise column-restricted
+ * TextFinder search on Column C (STUDENT_ID) with matchEntireCell(true) to
+ * extract only that student's payment rows for the given year.
+ *
+ * This is designed for lazy backward-chaining waterfall lookups — the frontend
+ * calls this API once per year, walking backwards through time to build a
+ * continuous payment timeline until it hits the admission month.
+ *
+ * Routing Trigger: case "LAZY_FETCH_STUDENT_LOGS" in doPost()
+ *
+ * @param {string} studentId - The STUDENT_ID to search for in Column C
+ * @param {number|string} targetYear - The year to target (e.g., 2026, "2025")
+ * @returns {Object} { status: "success", data: Array<Object>, targetYear: Number, sheetName: String }
+ *   Each object in data matches: { TXN_ID, TIMESTAMP, STUDENT_ID, RL_NO, STUDENT_NAME, FEE_PERIOD, STATUS, AMOUNT_COLLECTED }
+ */
+function handleLazyFetchStudentLogs(studentId, targetYear) {
+  try {
+    // Input Validation
+    if (!studentId || studentId === "") {
+      return createResponse({
+        status: "error",
+        message: "Missing required parameter: studentId."
+      });
+    }
+
+    var year = parseInt(targetYear, 10);
+    if (isNaN(year) || year < 2000 || year > 2099) {
+      return createResponse({
+        status: "error",
+        message: "Invalid targetYear. Must be a 4-digit year between 2000 and 2099."
+      });
+    }
+
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var sheetName = "Logs_" + year;
+    var sheet = ss.getSheetByName(sheetName);
+
+    // If the shard tab doesn't exist for this year, return empty results
+    // (student has no payment records for this year — perfectly valid)
+    if (!sheet) {
+      return createResponse({
+        status: "success",
+        data: [],
+        targetYear: year,
+        sheetName: sheetName,
+        message: "No payment log sheet found for year " + year + ". Sheet '" + sheetName + "' does not exist."
+      });
+    }
+
+    var lastRow = sheet.getLastRow();
+
+    // If only headers exist (or sheet is empty), return empty dataset
+    if (lastRow <= 1) {
+      return createResponse({
+        status: "success",
+        data: [],
+        targetYear: year,
+        sheetName: sheetName,
+        message: "Payment log sheet for " + year + " exists but contains no data rows."
+      });
+    }
+
+    var schema = SHEET_TEMPLATES.PaymentLog;
+
+    // -------------------------------------------------------
+    // COLUMN-RESTRICTED TEXTFINDER SEARCH
+    // Column C (index 3 in 1-based) = STUDENT_ID per schema definition:
+    //   ['TXN_ID'(1), 'TIMESTAMP'(2), 'STUDENT_ID'(3), ...]
+    // Use createTextFinder on Column C only for precise isolation.
+    // -------------------------------------------------------
+    var studentIdColumn = sheet.getRange(2, 3, lastRow - 1, 1); // Column C, rows 2 to lastRow
+    var finder = studentIdColumn.createTextFinder(String(studentId)).matchEntireCell(true);
+    var matchedCells = finder.findAll();
+
+    // If no matches found, return empty array (student has no records this year)
+    if (!matchedCells || matchedCells.length === 0) {
+      return createResponse({
+        status: "success",
+        data: [],
+        targetYear: year,
+        sheetName: sheetName,
+        message: "No payment records found for student '" + studentId + "' in " + sheetName + "."
+      });
+    }
+
+    // -------------------------------------------------------
+    // EXTRACT MATCHED ROWS — Map each found row to schema objects
+    // -------------------------------------------------------
+    var results = [];
+    for (var i = 0; i < matchedCells.length; i++) {
+      var matchedCell = matchedCells[i];
+      var rowNumber = matchedCell.getRow();
+
+      // Read the full row data for this match
+      var rowData = sheet.getRange(rowNumber, 1, 1, schema.length).getValues()[0];
+
+      var record = {};
+      for (var j = 0; j < schema.length; j++) {
+        var key = schema[j];
+        var cellValue = rowData[j];
+
+        // Coerce Date objects to ISO strings for clean frontend parsing
+        if (key === 'TIMESTAMP' && cellValue instanceof Date) {
+          record[key] = cellValue.toISOString();
+        } else {
+          record[key] = cellValue;
+        }
+      }
+      results.push(record);
+    }
+
+    return createResponse({
+      status: "success",
+      data: results,
+      targetYear: year,
+      sheetName: sheetName,
+      message: "Found " + results.length + " payment record(s) for student '" + studentId + "' in " + sheetName + "."
+    });
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Lazy Fetch Student Logs Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * FETCH_STATEMENT_RANGE Handler
+ * --------------------------------------------------
+ * Parametric Range Aggregator Backend
+ * Dynamically slices cross-year historical logs.
+ */
+function handleFetchStatementRange(startDateStr, endDateStr) {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var start = new Date(startDateStr);
+    var end = new Date(endDateStr);
+    
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return createResponse({ status: 'error', message: 'Invalid date parameters.' });
+    }
+    
+    // Ensure end date covers the full day
+    end.setHours(23, 59, 59, 999);
+    
+    var startYear = start.getFullYear();
+    var endYear = end.getFullYear();
+    
+    var mergedLogs = [];
+    var headers = SHEET_TEMPLATES.PaymentLog;
+    
+    for (var y = startYear; y <= endYear; y++) {
+      var sheetName = 'Logs_' + y;
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) continue;
+      
+      var lastRow = sheet.getLastRow();
+      if (lastRow < 2) continue;
+      
+      var data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+      
+      for (var i = 0; i < data.length; i++) {
+        var row = data[i];
+        var txnDate = new Date(row[1]); // TIMESTAMP is column 1 (0-indexed array)
+        
+        if (txnDate >= start && txnDate <= end) {
+          var logObj = {};
+          for (var j = 0; j < headers.length; j++) {
+            logObj[headers[j]] = row[j];
+          }
+          mergedLogs.push(logObj);
+        }
+      }
+    }
+    
+    return createResponse({ status: 'success', data: mergedLogs });
+  } catch (error) {
+    return createResponse({ status: 'error', message: 'Fetch Range Error: ' + error.toString() });
   }
 }
 
