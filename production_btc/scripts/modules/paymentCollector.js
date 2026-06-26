@@ -364,8 +364,21 @@ window.PaymentCollectorModule = (function () {
                                         <span id="collectorCheckoutBreakdown" class="text-xs font-bold text-slate-400">(0 months × ₹${feeConfig.monthlyFee})</span>
                                     </div>
                                 </div>
+                            </div>
+                            <!-- Automated Distribution Gateways Panel -->
+                            <div class="flex items-center flex-wrap gap-4 px-5 pb-3 border-t border-slate-100 dark:border-slate-700/50 pt-3">
+                                <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                                    <input type="checkbox" id="pc_send_email_cb" class="w-4 h-4 rounded text-indigo-600 border-slate-300 accent-indigo-600 cursor-pointer">
+                                    📧 Email Invoice Receipt
+                                </label>
+                                <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                                    <input type="checkbox" id="pc_send_whatsapp_cb" class="w-4 h-4 rounded text-emerald-600 border-slate-300 accent-emerald-600 cursor-pointer">
+                                    💬 Open WhatsApp Thread
+                                </label>
+                            </div>
+                            <div class="px-5 pb-4">
                                 <button onclick="window.PaymentCollectorModule.submitPayment()" id="collectorSubmitBtn"
-                                    class="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-sm transition-all shadow-lg active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                                    class="w-full flex items-center justify-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-sm transition-all shadow-lg active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
                                     disabled>
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                     Submit Payment
@@ -1119,6 +1132,31 @@ window.PaymentCollectorModule = (function () {
                         lockCard.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-emerald-400 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 cursor-not-allowed transition-all duration-200 select-none group opacity-90';
                     }
                 }
+
+                // ── NOTIFICATION DISPATCH HOOK ──────────────────────────────
+                // Read the admin's pre-selected gateway checkboxes and fire
+                // the unified dispatcher. All PDF generation, email relay,
+                // and WhatsApp redirect logic lives inside NotificationUtils.
+                var emailTriggered    = document.getElementById('pc_send_email_cb')?.checked || false;
+                var whatsappTriggered = document.getElementById('pc_send_whatsapp_cb')?.checked || false;
+
+                if ((emailTriggered || whatsappTriggered) && window.NotificationUtils) {
+                    var sortedPeriodLabels = newMonths.map(function(idx) {
+                        return MONTH_NAMES[idx] + ' ' + _calendarYear;
+                    }).join(', ');
+
+                    await window.NotificationUtils.dispatchFeeNotification(
+                        _selectedCandidate,
+                        {
+                            txnId:      payloadArray[0] ? payloadArray[0].TXN_ID : '',
+                            amount:     newMonths.length * feeConfig.monthlyFee,
+                            feePeriods: sortedPeriodLabels
+                        },
+                        emailTriggered,
+                        whatsappTriggered
+                    );
+                }
+                // ── END NOTIFICATION DISPATCH ───────────────────────────────
 
                 // Re-run due analysis to reflect changes
                 if (_dueAnalysisComplete) {

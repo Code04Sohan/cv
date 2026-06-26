@@ -172,6 +172,9 @@ function doPost(e) {
       case "FETCH_STATEMENT_RANGE":
         return handleFetchStatementRange(payload.startDate, payload.endDate);
 
+      case "SEND_RUNTIME_EMAIL_ATTACHMENT":
+        return handleSendRuntimeEmailAttachment(payload);
+
       default:
         return createResponse({ status: "error", message: "Unknown action." });
     }
@@ -984,3 +987,64 @@ function handleFetchStatementRange(startDateStr, endDateStr) {
   }
 }
 
+/**
+ * ==========================================
+ * 📧 MODULE 9: ZERO-STORAGE RUNTIME EMAIL RELAY
+ * ==========================================
+ */
+
+/**
+ * SEND_RUNTIME_EMAIL_ATTACHMENT Handler
+ * -------------------------------------------------------------------
+ * Decodes a client-transmitted base64 PDF data chunk string directly
+ * into a volatile RAM binary blob, and transmits it via native SMTP
+ * email relays. Leaves zero files on Google Drive storage rows.
+ *
+ * Routing Trigger: case "SEND_RUNTIME_EMAIL_ATTACHMENT" in doPost()
+ *
+ * @param {Object} payload
+ *   {
+ *     recipientEmail : string,  // Destination SMTP address
+ *     subject        : string,  // Email subject line
+ *     bodyHtml       : string,  // HTML body content
+ *     base64Pdf      : string,  // Base64-encoded PDF (with or without data URI prefix)
+ *     fileName       : string   // (Optional) Attachment filename — defaults to "Receipt_Document.pdf"
+ *   }
+ * @returns {Object} { status: "success"|"error", message: string }
+ */
+function handleSendRuntimeEmailAttachment(payload) {
+  try {
+    if (!payload.recipientEmail || !payload.recipientEmail.trim()) {
+      return createResponse({ status: "success", message: "Skipped: Recipient email address is empty." });
+    }
+    if (!payload.base64Pdf) {
+      return createResponse({ status: "error", message: "Execution error: Missing Base64 PDF source stream." });
+    }
+
+    // Strip potential URL header text prefixes from the data stream base64 array
+    var cleanData = payload.base64Pdf.split(',').pop();
+    var decodedBytes = Utilities.base64Decode(cleanData);
+
+    // Hold container purely in local volatile server RAM execution limits
+    var pdfBlob = Utilities.newBlob(decodedBytes, "application/pdf", payload.fileName || "Receipt_Document.pdf");
+
+    // Broadcast payload directly via Google's internal mail delivery engine
+    MailApp.sendEmail({
+      to: payload.recipientEmail,
+      subject: payload.subject,
+      htmlBody: payload.bodyHtml,
+      attachments: [pdfBlob]
+    });
+
+    return createResponse({
+      status: "success",
+      message: "Runtime attachment successfully relayed to recipient."
+    });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Apps Script Runtime Mail Gateway Failure: " + error.toString()
+    });
+  }
+}

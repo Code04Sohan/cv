@@ -663,6 +663,19 @@ window.NewCandidateModule = (function () {
                             </div>
                         </div>
 
+                        <!-- ── COMMUNICATION PREFERENCE PANEL ───────────────────────── -->
+                        <!-- Checkboxes are unchecked by default. Admin explicitly opts in. -->
+                        <div class="flex items-center flex-wrap gap-4 mt-2 mb-4 p-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl">
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                                <input type="checkbox" id="reg_send_email_cb" class="w-4 h-4 rounded text-brand-600 border-slate-300 accent-brand-600 cursor-pointer">
+                                📧 Send Admission Slip Email
+                            </label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                                <input type="checkbox" id="reg_send_whatsapp_cb" class="w-4 h-4 rounded text-emerald-600 border-slate-300 accent-emerald-600 cursor-pointer">
+                                💬 Redirect WhatsApp Message
+                            </label>
+                        </div>
+
                         <!-- Submission Controls -->
                         <div class="flex flex-col sm:flex-row items-center gap-4 justify-end pt-4">
                             <button type="button" onclick="window.NewCandidateModule.resetFormFields()"
@@ -997,6 +1010,20 @@ window.NewCandidateModule = (function () {
                 window.CandidateQueue = window.CandidateQueue.filter(j => j.id !== job.id);
                 window.UIUtils.showToast(`Candidate "${job.data.STUDENT_NAME}" committed to cloud successfully!`, "success");
                 state.isOffline = false;
+
+                // ── CHECKBOX-GATED ADMISSION NOTIFICATIONS ────────────────
+                // Preference flags were captured at submit-time and stored on
+                // the job object — the form was already reset by this point.
+                // NotificationUtils handles its own error toasts internally.
+                if (window.NotificationUtils) {
+                    if (job.notifyEmail && job.data.CONTACT_EMAIL) {
+                        window.NotificationUtils.sendAdmissionEmail(job.data);
+                    }
+                    if (job.notifyWhatsApp) {
+                        window.NotificationUtils.sendAdmissionWhatsApp(job.data);
+                    }
+                }
+                // ── END ADMISSION NOTIFICATIONS ───────────────────────────
             } else {
                 // Server validation or execution error
                 job.status = 'Failed';
@@ -1107,11 +1134,19 @@ window.NewCandidateModule = (function () {
             TIMESTAMP: new Date().toISOString()
         };
 
+        // ── CAPTURE NOTIFICATION PREFERENCES AT SUBMIT TIME ──────────────
+        // The form is reset (resetFormFields) BEFORE the queue worker fires,
+        // so we must snapshot checkbox values NOW and store them on the job.
+        const notifyEmailAtSubmit    = document.getElementById('reg_send_email_cb')?.checked    || false;
+        const notifyWhatsAppAtSubmit = document.getElementById('reg_send_whatsapp_cb')?.checked || false;
+
         const job = {
             id: 'job_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
             status: 'Pending',
             data: record,
-            error: ''
+            error: '',
+            notifyEmail:    notifyEmailAtSubmit,
+            notifyWhatsApp: notifyWhatsAppAtSubmit
         };
 
         // Push into local active array

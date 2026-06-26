@@ -45,6 +45,15 @@ window.PaymentLedgerModule = (function () {
         return `${day}-${month}-${year}`;
     }
 
+    /**
+     * Escapes a value for safe use inside an HTML attribute string.
+     * Prevents onclick/data-* injection from apostrophes, quotes, or
+     * angle brackets inside student names, period strings, etc.
+     */
+    function escAttr(val) {
+        return String(val || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     // =========================================
     // 🚀 MODULE LIFECYCLE
     // =========================================
@@ -487,6 +496,25 @@ window.PaymentLedgerModule = (function () {
                         <div class="flex flex-col">
                             <span class="text-sm font-bold text-slate-800 dark:text-white">${item.STUDENT_NAME || 'N/A'}</span>
                             <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400">${item.STUDENT_ID || 'N/A'}</span>
+                            <div class="flex items-center gap-2 mt-1 text-[10px] font-bold tracking-wider select-none">
+                                <button type="button"
+                                    class="ledger-resend-btn text-indigo-500 hover:text-indigo-400 hover:underline transition-colors cursor-pointer"
+                                    data-action="email"
+                                    data-student-id="${escAttr(item.STUDENT_ID)}"
+                                    data-txn-id="${escAttr(item.TXN_ID)}"
+                                    data-amount="${escAttr(item.AMOUNT_COLLECTED)}"
+                                    data-fee-period="${escAttr(item.FEE_PERIOD)}"
+                                >📧 Resend Mail</button>
+                                <span class="text-slate-700/60 dark:text-slate-600">|</span>
+                                <button type="button"
+                                    class="ledger-resend-btn text-emerald-500 hover:text-emerald-400 hover:underline transition-colors cursor-pointer"
+                                    data-action="whatsapp"
+                                    data-student-id="${escAttr(item.STUDENT_ID)}"
+                                    data-txn-id="${escAttr(item.TXN_ID)}"
+                                    data-amount="${escAttr(item.AMOUNT_COLLECTED)}"
+                                    data-fee-period="${escAttr(item.FEE_PERIOD)}"
+                                >💬 Resend WP</button>
+                            </div>
                         </div>
                     </td>
                     <td class="px-5 py-4 text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -503,6 +531,59 @@ window.PaymentLedgerModule = (function () {
         });
         
         tbody.innerHTML = html;
+
+        // ── DELEGATED EVENT HANDLER FOR RESEND BUTTONS ────────────────────
+        // Using event delegation instead of inline onclick so that:
+        //  a) apostrophes/quotes in field values never break handler strings
+        //  b) a single listener covers all dynamically rendered rows
+        // The handler is re-registered each render; the old one is discarded
+        // with the old tbody.innerHTML replacement above.
+        tbody.addEventListener('click', function handleResendClick(e) {
+            const btn = e.target.closest('.ledger-resend-btn');
+            if (!btn) return;
+
+            const action     = btn.dataset.action;
+            const studentId  = btn.dataset.studentId;
+            const txnId      = btn.dataset.txnId;
+            const amount     = btn.dataset.amount;
+            const feePeriod  = btn.dataset.feePeriod;
+
+            // Look up the full candidate record from the live MasterCandidateCache
+            const student = (window.MasterCandidateCache || []).find(
+                function(x) { return x.STUDENT_ID === studentId; }
+            );
+
+            if (!student) {
+                if (window.UIUtils) {
+                    window.UIUtils.showToast(
+                        'Student record not found in local cache. Refresh the directory first.',
+                        'warning'
+                    );
+                }
+                return;
+            }
+
+            if (!window.NotificationUtils) {
+                if (window.UIUtils) {
+                    window.UIUtils.showToast('Notification engine not loaded.', 'error');
+                }
+                return;
+            }
+
+            const summaryData = {
+                txnId:      txnId,
+                amount:     amount,
+                feePeriods: feePeriod
+            };
+
+            // Route to the correct channel based on which button was clicked
+            if (action === 'email') {
+                window.NotificationUtils.dispatchFeeNotification(student, summaryData, true, false);
+            } else if (action === 'whatsapp') {
+                window.NotificationUtils.dispatchFeeNotification(student, summaryData, false, true);
+            }
+        }, { once: true });
+        // ── END DELEGATED EVENT HANDLER ───────────────────────────────────
     }
 
     // =========================================
