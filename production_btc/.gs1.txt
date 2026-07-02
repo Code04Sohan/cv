@@ -212,26 +212,54 @@ function handleFetchMonthlyLedger(requestPayload) {
   try {
     var targetYear = requestPayload.year || String(new Date().getFullYear());
     var targetMonth = requestPayload.month; // Expected zero-padded string format, e.g., "01" through "12"
-    
-    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    
-    // 2. Smart Sheet Tab Fallback
-    var sheet = ss.getSheetByName("Logs_" + targetYear) || 
-                ss.getSheetByName("Logs") || 
-                ss.getSheetByName("Payment_Logs");
-    
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 🚀 ADVANCED SHEETS API v4 — High-performance read path
+    // Resolve the correct shard tab name with smart fallback convention.
+    // The Advanced API fetches the raw 2D array directly from the Sheets
+    // REST endpoint, bypassing the SpreadsheetApp object model overhead.
+    // ─────────────────────────────────────────────────────────────────────
+
+    // 2. Smart Sheet Tab Fallback — determine which named range to target
+    var candidateSheetNames = ["Logs_" + targetYear, "Logs", "Payment_Logs"];
+    var resolvedSheetName = null;
+
+    for (var s = 0; s < candidateSheetNames.length; s++) {
+      var candidateName = candidateSheetNames[s];
+      try {
+        // A lightweight probe: ask for a single cell; if the sheet is absent
+        // the API throws rather than returns an empty body.
+        var probe = Sheets.Spreadsheets.Values.get(
+          CONFIG.SPREADSHEET_ID,
+          "'" + candidateName + "'!A1"
+        );
+        // If we reach here, the sheet exists
+        resolvedSheetName = candidateName;
+        break;
+      } catch (probeErr) {
+        // Sheet does not exist — try next candidate
+      }
+    }
+
     // Safety fallback if no tabs exist
-    if (!sheet) {
+    if (!resolvedSheetName) {
       return createResponse({ status: "success", data: [], message: "Log sheet for year " + targetYear + " not found." });
     }
-    
-    var rawData = sheet.getDataRange().getValues();
+
+    // Full shard read via Advanced Sheets API
+    var response = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + resolvedSheetName + "'"
+    );
+
+    var rawData = (response && response.values) ? response.values : [];
+
     if (rawData.length <= 1) {
       return createResponse({ status: "success", data: [] });
     }
-    
+
     var headers = rawData[0];
-    
+
     // 1. Smart Column Header Detection
     var getColIndex = function(headerArray, possibleNames) {
       for (var i = 0; i < possibleNames.length; i++) {
@@ -240,55 +268,58 @@ function handleFetchMonthlyLedger(requestPayload) {
       }
       return -1;
     };
-    
-    var txnIdIdx = headers.indexOf("TXN_ID");
+
+    var txnIdIdx       = headers.indexOf("TXN_ID");
     var studentNameIdx = headers.indexOf("STUDENT_NAME");
-    var feePeriodIdx = headers.indexOf("FEE_PERIOD");
-    var amountIdx = headers.indexOf("AMOUNT_COLLECTED");
-    
+    var feePeriodIdx   = headers.indexOf("FEE_PERIOD");
+    var amountIdx      = headers.indexOf("AMOUNT_COLLECTED");
+
     var studentIdIdx = getColIndex(headers, ["STUDENT_ID", "ID", "REGISTRATION_NO"]);
-    var dateIdx = getColIndex(headers, ["TRANSACTION_DATE", "DATE", "TIMESTAMP", "PAYMENT_DATE", "DATE_OF_PAYMENT"]);
-    
+    var dateIdx      = getColIndex(headers, ["TRANSACTION_DATE", "DATE", "TIMESTAMP", "PAYMENT_DATE", "DATE_OF_PAYMENT"]);
+
     var filteredMonthlyLogs = [];
+
+    // Note: Advanced API returns all values as strings; Date objects are not returned.
+    // We perform universal string-based month extraction on the raw cell value.
 
     // Loop through database records backwards to maintain recent-first order natively
     for (var i = rawData.length - 1; i >= 1; i--) {
       var row = rawData[i];
-      var rawDateValue = row[dateIdx];
-      
+      var rawDateValue = (dateIdx !== -1 && dateIdx < row.length) ? row[dateIdx] : "";
+
       if (!rawDateValue) continue;
-      
-      // 3. Universal Date/Month Extractor
+
+      // 3. Universal Date/Month Extractor (string-safe for Advanced API output)
       var parsedMonth = "";
-      var dateString = "";
-      
-      if (rawDateValue instanceof Date) {
-        parsedMonth = Utilities.formatDate(rawDateValue, Session.getScriptTimeZone(), "MM");
-        dateString = Utilities.formatDate(rawDateValue, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      var dateString  = String(rawDateValue).trim();
+
+      // Try ISO format YYYY-MM-DD (Advanced API canonical output)
+      var isoMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        parsedMonth = isoMatch[2]; // Already zero-padded
       } else {
-        dateString = String(rawDateValue).trim();
+        // Covers DD/MM/YYYY or DD-MM-YYYY legacy formats
         var parts = dateString.split(/[\/\-]/);
         if (parts.length >= 3) {
-            // Covers both YYYY-MM-DD and DD/MM/YYYY formats
-            var extracted = String(parts[1]).trim();
-            parsedMonth = extracted.length === 1 ? "0" + extracted : extracted;
+          var extracted = String(parts[1]).trim();
+          parsedMonth = extracted.length === 1 ? "0" + extracted : extracted;
         }
       }
 
       // 4. Absolute Wildcard Check
       var isWildcard = !targetMonth || targetMonth === "ALL" || targetMonth === "All Months" || targetMonth === "";
-      
+
       // SERVER-SIDE PRE-FILTER MATCH: Skip rows that do not match the selected target month
       if (!isWildcard && parsedMonth !== targetMonth) {
         continue;
       }
 
       filteredMonthlyLogs.push({
-        TXN_ID: txnIdIdx !== -1 ? String(row[txnIdIdx]) : "",
-        STUDENT_NAME: studentNameIdx !== -1 ? String(row[studentNameIdx]) : "",
-        STUDENT_ID: studentIdIdx !== -1 ? String(row[studentIdIdx]) : "",
-        FEE_PERIOD: feePeriodIdx !== -1 ? String(row[feePeriodIdx]) : "",
-        AMOUNT_COLLECTED: amountIdx !== -1 ? Number(row[amountIdx]) : 0,
+        TXN_ID:           txnIdIdx       !== -1 && txnIdIdx       < row.length ? String(row[txnIdIdx])       : "",
+        STUDENT_NAME:     studentNameIdx !== -1 && studentNameIdx < row.length ? String(row[studentNameIdx]) : "",
+        STUDENT_ID:       studentIdIdx   !== -1 && studentIdIdx   < row.length ? String(row[studentIdIdx])   : "",
+        FEE_PERIOD:       feePeriodIdx   !== -1 && feePeriodIdx   < row.length ? String(row[feePeriodIdx])   : "",
+        AMOUNT_COLLECTED: amountIdx      !== -1 && amountIdx      < row.length ? Number(row[amountIdx])      : 0,
         TRANSACTION_DATE: dateString
       });
     }
@@ -536,15 +567,25 @@ function getOrCreateDriveFolder(folderName) {
  */
 function handleFetchDirectory(payload) {
   try {
-    const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    const sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
+    // ─────────────────────────────────────────────────────────────────────
+    // 🚀 ADVANCED SHEETS API v4 — Global Candidate Directory Read
+    // Replaces SpreadsheetApp.getDataRange().getValues() with a direct
+    // REST call to Sheets.Spreadsheets.Values.get. This bypasses the
+    // heavyweight SpreadsheetApp object model and delivers raw 2D array
+    // data at native REST throughput — critical for large directories.
+    //
+    // UI Data Contract: The response shape is preserved exactly.
+    //   • Row[0]  → treated as headers.
+    //   • Row[1…] → mapped into { header: value } objects.
+    //   • IS_DELETED column is resolved dynamically and stripped from
+    //     the payload; soft-deleted rows are silently discarded server-side.
+    // ─────────────────────────────────────────────────────────────────────
+    const response = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'"
+    );
 
-    if (!sheet) {
-      return createResponse({ status: "success", data: [] });
-    }
-
-    // ⚡ SINGLE READ: Pull the entire data range into RAM in one API call
-    const rawData = sheet.getDataRange().getValues();
+    const rawData = (response && response.values) ? response.values : [];
 
     if (rawData.length <= 1) {
       return createResponse({ status: "success", data: [] });
@@ -564,10 +605,9 @@ function handleFetchDirectory(payload) {
 
       // ── SERVER-SIDE PRE-FILTER ────────────────────────────────────────
       // Skip this row entirely if the IS_DELETED cell is flagged true.
-      // Two-branch check covers both a native Sheets boolean checkbox
-      // (=== true) and a plain text representation ("TRUE") for maximum
-      // interoperability with manual sheet edits.
-      if (deletedIdx !== -1) {
+      // Advanced API returns booleans as the string "TRUE" / "FALSE";
+      // we normalise both native boolean (legacy path) and string forms.
+      if (deletedIdx !== -1 && deletedIdx < row.length) {
         const deletedFlag = row[deletedIdx];
         if (deletedFlag === true || String(deletedFlag).toUpperCase() === "TRUE") {
           continue; // Row is soft-deleted — discard silently, never stream
@@ -578,11 +618,13 @@ function handleFetchDirectory(payload) {
       // Build the record object against the live runtime headers so that
       // any non-IS_DELETED columns added to the sheet in future releases
       // are automatically included without requiring a backend redeploy.
+      // NOTE: Advanced API may return shorter rows for trailing empty cells;
+      // we default missing cells to an empty string for contract stability.
       const record = {};
       for (let j = 0; j < headers.length; j++) {
         const header = headers[j];
         if (header === "IS_DELETED") continue; // Strip flag — internal metadata only
-        record[header] = row[j];
+        record[header] = (j < row.length) ? row[j] : "";
       }
 
       activeCandidates.push(record);
@@ -1099,13 +1141,32 @@ function handleLazyFetchStudentLogs(studentId, targetYear) {
       });
     }
 
-    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     var sheetName = "Logs_" + year;
-    var sheet = ss.getSheetByName(sheetName);
+    var schema    = SHEET_TEMPLATES.PaymentLog;
 
-    // If the shard tab doesn't exist for this year, return empty results
-    // (student has no payment records for this year — perfectly valid)
-    if (!sheet) {
+    // ─────────────────────────────────────────────────────────────────────
+    // 🚀 ADVANCED SHEETS API v4 — Payment Ledger Historical Read
+    // Fetches the entire annual shard in a single REST call instead of
+    // opening the Spreadsheet object, probing lastRow, and issuing
+    // per-row getRange() reads inside a TextFinder loop.
+    //
+    // Strategy: Read the full shard once → filter client-side in JS RAM.
+    // This eliminates N individual getRange() round-trips (one per matched
+    // row) and replaces them with a single REST network call.
+    //
+    // UI Data Contract: Response keys match SHEET_TEMPLATES.PaymentLog
+    // exactly.  TIMESTAMP is serialised to an ISO string.
+    // ─────────────────────────────────────────────────────────────────────
+    var rawData;
+    try {
+      var response = Sheets.Spreadsheets.Values.get(
+        CONFIG.SPREADSHEET_ID,
+        "'" + sheetName + "'"
+      );
+      rawData = (response && response.values) ? response.values : [];
+    } catch (sheetNotFoundErr) {
+      // The Advanced API throws when the named sheet does not exist.
+      // Treat this as an empty-year result — perfectly valid for waterfall.
       return createResponse({
         status: "success",
         data: [],
@@ -1115,10 +1176,8 @@ function handleLazyFetchStudentLogs(studentId, targetYear) {
       });
     }
 
-    var lastRow = sheet.getLastRow();
-
-    // If only headers exist (or sheet is empty), return empty dataset
-    if (lastRow <= 1) {
+    // Header row only (or completely empty) — return empty dataset
+    if (rawData.length <= 1) {
       return createResponse({
         status: "success",
         data: [],
@@ -1128,20 +1187,45 @@ function handleLazyFetchStudentLogs(studentId, targetYear) {
       });
     }
 
-    var schema = SHEET_TEMPLATES.PaymentLog;
+    var headers = rawData[0];
+
+    // Resolve live STUDENT_ID column index from actual headers
+    // (schema position is authoritative, but dynamic resolution adds safety)
+    var studentIdColIdx = headers.indexOf("STUDENT_ID");
+    if (studentIdColIdx === -1) studentIdColIdx = 2; // Fallback to schema index 2 (Column C)
 
     // -------------------------------------------------------
-    // COLUMN-RESTRICTED TEXTFINDER SEARCH
-    // Column C (index 3 in 1-based) = STUDENT_ID per schema definition:
-    //   ['TXN_ID'(1), 'TIMESTAMP'(2), 'STUDENT_ID'(3), ...]
-    // Use createTextFinder on Column C only for precise isolation.
+    // IN-MEMORY STUDENT_ID FILTER
+    // Walk all data rows and collect exact STUDENT_ID matches.
+    // Replaces the TextFinder + per-row getRange loop entirely.
     // -------------------------------------------------------
-    var studentIdColumn = sheet.getRange(2, 3, lastRow - 1, 1); // Column C, rows 2 to lastRow
-    var finder = studentIdColumn.createTextFinder(String(studentId)).matchEntireCell(true);
-    var matchedCells = finder.findAll();
+    var results = [];
+    var targetIdStr = String(studentId).trim();
 
-    // If no matches found, return empty array (student has no records this year)
-    if (!matchedCells || matchedCells.length === 0) {
+    for (var i = 1; i < rawData.length; i++) {
+      var row = rawData[i];
+      var cellId = (studentIdColIdx < row.length) ? String(row[studentIdColIdx]).trim() : "";
+      if (cellId !== targetIdStr) continue;
+
+      // Map row array → schema-keyed object (preserving UI Data Contract)
+      var record = {};
+      for (var j = 0; j < schema.length; j++) {
+        var key       = schema[j];
+        var cellValue = (j < row.length) ? row[j] : "";
+
+        // Normalise TIMESTAMP: Advanced API returns date-serial or string;
+        // coerce to ISO string to maintain frontend parsing contract.
+        if (key === "TIMESTAMP" && cellValue !== "") {
+          var ts = new Date(cellValue);
+          record[key] = isNaN(ts.getTime()) ? String(cellValue) : ts.toISOString();
+        } else {
+          record[key] = cellValue;
+        }
+      }
+      results.push(record);
+    }
+
+    if (results.length === 0) {
       return createResponse({
         status: "success",
         data: [],
@@ -1149,32 +1233,6 @@ function handleLazyFetchStudentLogs(studentId, targetYear) {
         sheetName: sheetName,
         message: "No payment records found for student '" + studentId + "' in " + sheetName + "."
       });
-    }
-
-    // -------------------------------------------------------
-    // EXTRACT MATCHED ROWS — Map each found row to schema objects
-    // -------------------------------------------------------
-    var results = [];
-    for (var i = 0; i < matchedCells.length; i++) {
-      var matchedCell = matchedCells[i];
-      var rowNumber = matchedCell.getRow();
-
-      // Read the full row data for this match
-      var rowData = sheet.getRange(rowNumber, 1, 1, schema.length).getValues()[0];
-
-      var record = {};
-      for (var j = 0; j < schema.length; j++) {
-        var key = schema[j];
-        var cellValue = rowData[j];
-
-        // Coerce Date objects to ISO strings for clean frontend parsing
-        if (key === 'TIMESTAMP' && cellValue instanceof Date) {
-          record[key] = cellValue.toISOString();
-        } else {
-          record[key] = cellValue;
-        }
-      }
-      results.push(record);
     }
 
     return createResponse({
@@ -1200,47 +1258,76 @@ function handleLazyFetchStudentLogs(studentId, targetYear) {
  */
 function handleFetchStatementRange(startDateStr, endDateStr) {
   try {
-    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     var start = new Date(startDateStr);
-    var end = new Date(endDateStr);
-    
+    var end   = new Date(endDateStr);
+
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       return createResponse({ status: 'error', message: 'Invalid date parameters.' });
     }
-    
+
     // Ensure end date covers the full day
     end.setHours(23, 59, 59, 999);
-    
+
     var startYear = start.getFullYear();
-    var endYear = end.getFullYear();
-    
+    var endYear   = end.getFullYear();
+
     var mergedLogs = [];
-    var headers = SHEET_TEMPLATES.PaymentLog;
-    
+    var schema     = SHEET_TEMPLATES.PaymentLog;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 🚀 ADVANCED SHEETS API v4 — Outstanding Dues / Cross-Year Roster Read
+    // Iterates each candidate annual shard within the date range and fetches
+    // all rows via Sheets.Spreadsheets.Values.get in a single REST call per
+    // shard year, replacing SpreadsheetApp.openById → getSheetByName →
+    // getLastRow → getRange().getValues() — a 4-step object-model chain per
+    // year — with a single lightweight REST call each.
+    //
+    // UI Data Contract: mergedLogs contains objects whose keys are the
+    // canonical SHEET_TEMPLATES.PaymentLog schema headers, identical to
+    // the previous SpreadsheetApp implementation.
+    // ─────────────────────────────────────────────────────────────────────
     for (var y = startYear; y <= endYear; y++) {
       var sheetName = 'Logs_' + y;
-      var sheet = ss.getSheetByName(sheetName);
-      if (!sheet) continue;
-      
-      var lastRow = sheet.getLastRow();
-      if (lastRow < 2) continue;
-      
-      var data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-      
-      for (var i = 0; i < data.length; i++) {
-        var row = data[i];
-        var txnDate = new Date(row[1]); // TIMESTAMP is column 1 (0-indexed array)
-        
+      var rawData;
+
+      try {
+        var response = Sheets.Spreadsheets.Values.get(
+          CONFIG.SPREADSHEET_ID,
+          "'" + sheetName + "'"
+        );
+        rawData = (response && response.values) ? response.values : [];
+      } catch (sheetNotFoundErr) {
+        // Advanced API throws when the named sheet does not exist — skip year
+        continue;
+      }
+
+      // Skip years with only a header row or no data
+      if (rawData.length < 2) continue;
+
+      // Use the live header row to resolve TIMESTAMP column index dynamically
+      var liveHeaders     = rawData[0];
+      var timestampColIdx = liveHeaders.indexOf("TIMESTAMP");
+      if (timestampColIdx === -1) timestampColIdx = 1; // Fallback to schema index 1
+
+      for (var i = 1; i < rawData.length; i++) {
+        var row = rawData[i];
+
+        // Normalise and parse the TIMESTAMP cell (Advanced API returns strings)
+        var rawTs   = (timestampColIdx < row.length) ? row[timestampColIdx] : "";
+        var txnDate = new Date(rawTs);
+        if (isNaN(txnDate.getTime())) continue; // Skip rows with unparseable dates
+
         if (txnDate >= start && txnDate <= end) {
+          // Map row array → schema-keyed object (preserving UI Data Contract)
           var logObj = {};
-          for (var j = 0; j < headers.length; j++) {
-            logObj[headers[j]] = row[j];
+          for (var j = 0; j < schema.length; j++) {
+            logObj[schema[j]] = (j < row.length) ? row[j] : "";
           }
           mergedLogs.push(logObj);
         }
       }
     }
-    
+
     return createResponse({ status: 'success', data: mergedLogs });
   } catch (error) {
     return createResponse({ status: 'error', message: 'Fetch Range Error: ' + error.toString() });
