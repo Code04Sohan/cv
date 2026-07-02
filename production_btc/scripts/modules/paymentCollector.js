@@ -185,7 +185,13 @@ window.PaymentCollectorModule = (function () {
      */
     async function mount(container) {
         _container = container;
-        _container.innerHTML = buildShellHTML();
+        _container.innerHTML = buildPremiumCollectorHTML();
+
+        // Re-Bind Click Trigger for Execution Settlement
+        var submitBtn = document.getElementById('collectorSubmitBtn');
+        if (submitBtn) {
+            submitBtn.onclick = submitPayment;
+        }
 
         // Parallel bootstrap: load cache + fee config simultaneously
         await Promise.all([
@@ -218,219 +224,126 @@ window.PaymentCollectorModule = (function () {
     // 🏗️ SHELL HTML BUILDER
     // =========================================
 
-    function buildShellHTML() {
+    function buildPremiumCollectorHTML() {
+        const standardDateIso = new Date().toISOString().split('T')[0];
+        const standardYear = new Date().getFullYear();
+
         return `
-            <div id="collectorShell" class="max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
-
-                <!-- ═══════════════════════════════════════ -->
-                <!-- HEADER BAR                              -->
-                <!-- ═══════════════════════════════════════ -->
-                <div class="relative bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700/80 overflow-hidden">
-                    <div class="absolute -top-20 -right-20 w-60 h-60 rounded-full bg-emerald-500/5 dark:bg-emerald-500/10 blur-3xl pointer-events-none"></div>
-                    <div class="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-brand-500/5 dark:bg-brand-500/10 blur-3xl pointer-events-none"></div>
-                    <div class="relative z-10 flex items-center gap-4">
-                        <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                            </svg>
-                        </div>
-                        <div>
-                            <h1 class="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white">💳 Fee Collector</h1>
-                            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium mt-0.5">Manage monthly fee payments & track outstanding dues</p>
-                        </div>
-                    </div>
+        <div class="space-y-6 max-w-6xl mx-auto p-2">
+            <!-- FIXED 1. PREMIUM BRANDED TOP HEADER (Matching design specifications in image_7957f.png) -->
+            <div class="flex items-center gap-3.5 p-4 bg-slate-900/10 dark:bg-slate-800/10 border border-slate-200/60 dark:border-slate-800/50 rounded-2xl select-none mb-4 animate-fadeIn">
+                <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shadow-inner border border-indigo-500/10">
+                    <!-- Premium Bank Card Vector Icon -->
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
                 </div>
+                <div>
+                    <h1 class="text-base font-black text-slate-800 dark:text-slate-100 tracking-wide uppercase">Fee Collector Workspace</h1>
+                    <p class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Process monthly student tuition payments and issue dynamic digital statements</p>
+                </div>
+            </div>
 
-                <!-- ═══════════════════════════════════════ -->
-                <!-- MAIN LAYOUT: 2-COLUMN GRID              -->
-                <!-- ═══════════════════════════════════════ -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- SEARCH CONTAINER ROW -->
+            <div class="bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm relative">
+                <label class="block text-[11px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Search Active Candidate</label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </span>
+                    <input type="text" id="collector_search_input" class="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all shadow-inner" placeholder="Type student name, unique ID, or contact number...">
+                </div>
+                <div id="collector_search_dropdown" class="absolute left-5 right-5 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto hidden"></div>
+            </div>
 
-                    <!-- ─────────────────────────────────── -->
-                    <!-- LEFT COLUMN: SEARCH + PROFILE CARD  -->
-                    <!-- ─────────────────────────────────── -->
-                    <div class="space-y-4">
-
-                        <!-- Student Search with Autocomplete -->
-                        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/80 shadow-sm">
-                            <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block">🔍 Search Student</label>
-                            <div class="relative">
-                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                                    <svg class="h-4.5 w-4.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                                </div>
-                                <input type="text" id="collectorSearchInput" placeholder="Name, Student ID, or Mobile..."
-                                    autocomplete="off"
-                                    class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-inner">
-
-                                <!-- Autocomplete Dropdown -->
-                                <div id="collectorAutocompleteDropdown" class="hidden absolute left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-50 max-h-72 overflow-y-auto">
-                                </div>
-                            </div>
-                            <button onclick="window.PaymentCollectorModule.clearSelection()" class="mt-3 w-full py-2 text-xs font-bold text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all">
-                                ✕ Clear Selection
-                            </button>
-                        </div>
-
-                        <!-- Selected Student Profile Card -->
-                        <div id="collectorSelectedCard" class="hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm overflow-hidden transition-all duration-300">
-                            <div class="bg-gradient-to-r from-brand-500 to-emerald-500 px-5 py-3">
-                                <span class="text-[10px] font-black text-white/80 uppercase tracking-widest">Selected Student</span>
-                            </div>
-                            <div class="p-5 space-y-3">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-12 h-12 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center text-brand-600 dark:text-brand-400 font-black text-lg shrink-0">
-                                        <span id="collectorAvatarInitial">?</span>
-                                    </div>
-                                    <div class="min-w-0">
-                                        <h3 id="collectorStudentName" class="font-extrabold text-slate-800 dark:text-white truncate text-base">—</h3>
-                                        <p id="collectorStudentCourse" class="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">—</p>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-2 gap-2 text-[11px]">
-                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
-                                        <span class="text-slate-400 font-bold block mb-0.5">STUDENT ID</span>
-                                        <span id="collectorStudentId" class="font-bold text-slate-700 dark:text-slate-200 break-all">—</span>
-                                    </div>
-                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
-                                        <span class="text-slate-400 font-bold block mb-0.5">ROLL NO</span>
-                                        <span id="collectorRollNo" class="font-bold text-slate-700 dark:text-slate-200">—</span>
-                                    </div>
-                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
-                                        <span class="text-slate-400 font-bold block mb-0.5">MOBILE</span>
-                                        <span id="collectorStudentMobile" class="font-bold text-slate-700 dark:text-slate-200">—</span>
-                                    </div>
-                                    <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg px-3 py-2">
-                                        <span class="text-slate-400 font-bold block mb-0.5">ADMISSION</span>
-                                        <span id="collectorAdmissionDate" class="font-bold text-slate-700 dark:text-slate-200">—</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+            <!-- CENTRAL MATRIX LAYOUT SHARDS -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                
+                <!-- LEFT AREA: LOADED CANDIDATE CARD -->
+                <div class="lg:col-span-5 bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-3 gap-2">
+                        <h3 class="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">Selected Candidate Profile</h3>
+                        <button type="button" id="pc_due_checker_btn" disabled class="px-3 py-1.5 text-[11px] font-black tracking-wider uppercase bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg transition-all border border-brand-200/40 disabled:opacity-40 disabled:cursor-not-allowed select-none whitespace-nowrap" onclick="triggerPremiumDueAnalysis()">
+                            🔍 Check Dues
+                        </button>
                     </div>
 
-                    <!-- ─────────────────────────────────── -->
-                    <!-- RIGHT COLUMN: MONTH GRID + ACTIONS  -->
-                    <!-- ─────────────────────────────────── -->
-                    <div class="lg:col-span-2 space-y-4">
-
-                        <!-- Year Picker + Action Row -->
-                        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/80 shadow-sm">
-                            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                <div class="flex items-center gap-3">
-                                    <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest shrink-0">📅 Calendar Year</label>
-                                    <input type="text" id="collectorYearInput" value="${_calendarYear}" maxlength="4"
-                                        oninput="window.PaymentCollectorModule.handleYearChange(this)"
-                                        class="w-24 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-center text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all text-sm">
-                                    <span id="collectorYearStatus" class="text-xs font-bold text-emerald-500 hidden">✓ Valid</span>
-                                    <span id="collectorYearError" class="text-xs font-bold text-rose-500 hidden">✕ Invalid Year</span>
-                                </div>
-                                <div class="flex items-center gap-2 w-full sm:w-auto">
-                                    <button onclick="window.PaymentCollectorModule.checkDueAndHistory()" id="collectorCheckDueBtn"
-                                        class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-sm active:scale-[0.97]">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-                                        Check Due & History
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 12-Month Checkbox Grid -->
-                        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/80 shadow-sm">
-                            <div class="flex items-center justify-between mb-4">
-                                <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Monthly Fee Checkout Grid</label>
-                                <span id="collectorMonthCounter" class="text-[11px] font-bold text-slate-400">0 selected</span>
-                            </div>
-                            <div id="collectorMonthGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                <!-- Month checkboxes injected by buildMonthGrid() -->
-                            </div>
-                        </div>
-
-                        <!-- ═══════════════════════════════ -->
-                        <!-- DUE SUMMARY WARNING BAR         -->
-                        <!-- ═══════════════════════════════ -->
-                        <div id="collectorDueSummaryBar" class="hidden rounded-2xl border-2 overflow-hidden shadow-sm transition-all duration-300">
-                            <!-- Dynamic content injected by backward-chaining algorithm -->
-                        </div>
-
-                        <!-- ═══════════════════════════════ -->
-                        <!-- CHECKOUT SECTION                -->
-                        <!-- ═══════════════════════════════ -->
-                        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm overflow-hidden">
-                            <div class="px-5 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div id="pc_student_card_empty" class="py-8 text-center text-xs font-medium text-slate-400">No student profile actively loaded into context.</div>
+                    
+                    <div id="pc_student_card_data" class="hidden space-y-3 animate-fadeIn">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-800" id="lbl_pc_avatar">--</div>
                                 <div>
-                                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Checkout Total</span>
-                                    <div class="flex items-baseline gap-2">
-                                        <span id="collectorCheckoutTotal" class="text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">₹ 0</span>
-                                        <span id="collectorCheckoutBreakdown" class="text-xs font-bold text-slate-400">(0 months × ₹${feeConfig.monthlyFee})</span>
-                                    </div>
+                                    <div class="text-sm font-bold text-slate-800 dark:text-slate-100" id="lbl_pc_name">--</div>
+                                    <div class="text-[10px] font-mono text-slate-400" id="lbl_pc_id">--</div>
                                 </div>
                             </div>
-                            <!-- Automated Distribution Gateways Panel -->
-                            <div class="flex items-center flex-wrap gap-4 px-5 pb-3 border-t border-slate-100 dark:border-slate-700/50 pt-3">
-                                <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
-                                    <input type="checkbox" id="pc_send_email_cb" class="w-4 h-4 rounded text-indigo-600 border-slate-300 accent-indigo-600 cursor-pointer">
-                                    📧 Email Invoice Receipt
-                                </label>
-                                <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer select-none">
-                                    <input type="checkbox" id="pc_send_whatsapp_cb" class="w-4 h-4 rounded text-emerald-600 border-slate-300 accent-emerald-600 cursor-pointer">
-                                    💬 Open WhatsApp Thread
-                                </label>
-                            </div>
-                            <div class="px-5 pb-4">
-                                <button onclick="window.PaymentCollectorModule.submitPayment()" id="collectorSubmitBtn"
-                                    class="w-full flex items-center justify-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-sm transition-all shadow-lg active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
-                                    disabled>
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                    Submit Payment
-                                    <svg id="collectorSubmitSpinner" class="animate-spin h-4 w-4 hidden" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ═══════════════════════════════════════ -->
-                <!-- FEE SETTINGS ADMIN CARD (Collapsible)   -->
-                <!-- ═══════════════════════════════════════ -->
-                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm overflow-hidden">
-                    <button onclick="window.PaymentCollectorModule.toggleFeeSettings()" type="button"
-                        class="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer">
-                        <div class="flex items-center gap-3">
-                            <span class="text-xl">⚙️</span>
-                            <span class="font-extrabold text-sm text-slate-700 dark:text-slate-200">Global Fee Rate Settings</span>
-                        </div>
-                        <svg id="feeSettingsChevron" class="w-5 h-5 text-slate-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                    </button>
-                    <div id="collectorFeeSettingsBody" class="hidden border-t border-slate-100 dark:border-slate-700">
-                        <div class="p-5 space-y-4">
-                            <div class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-xl px-4 py-3">
-                                <p class="text-xs font-bold text-amber-700 dark:text-amber-400">
-                                    ⚠️ Changing these rates affects all future payment calculations globally. Existing records remain unmodified.
-                                </p>
-                            </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div class="space-y-1.5">
-                                    <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Monthly Fee (₹)</label>
-                                    <input type="number" id="feeSettingsMonthly" min="0" step="1" value="${feeConfig.monthlyFee}"
-                                        class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all text-lg">
-                                </div>
-                                <div class="space-y-1.5">
-                                    <label class="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Admission Fee (₹)</label>
-                                    <input type="number" id="feeSettingsAdmission" min="0" step="1" value="${feeConfig.admissionFee}"
-                                        class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all text-lg">
-                                </div>
-                            </div>
-                            <button onclick="window.PaymentCollectorModule.saveFeeConfig()" id="feeSettingsSaveBtn"
-                                class="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm transition-all shadow-sm active:scale-[0.97]">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                Save Fee Configuration
+                            
+                            <!-- ADDED: 3. PREMIUM "SHOW MORE" HISTORY REDIRECT BUTTON -->
+                            <button type="button" id="pc_ledger_redirect_btn" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-black tracking-wider uppercase transition-all shadow-sm active:scale-95 flex items-center gap-1 cursor-pointer select-none">
+                                📋 Show More
                             </button>
                         </div>
+                        
+                        <div class="grid grid-cols-2 gap-2 pt-2 text-xs">
+                            <div class="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-900"><span class="block text-[9px] font-bold text-slate-400 uppercase">Roll Number</span><span class="font-bold text-slate-700 dark:text-slate-300" id="lbl_pc_roll">--</span></div>
+                            <div class="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-900"><span class="block text-[9px] font-bold text-slate-400 uppercase">Contact Mobile</span><span class="font-bold text-slate-700 dark:text-slate-300" id="lbl_pc_phone">--</span></div>
+                        </div>
+                        <div class="p-2.5 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-xl border border-indigo-100/50 dark:border-indigo-950/50 text-center">
+                            <span class="text-[11px] font-bold text-indigo-600 dark:text-indigo-400" id="lbl_pc_meta_banner">--</span>
+                        </div>
+                    </div>
+
+                    <div id="pc_premium_due_viewer" class="hidden mt-3 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3 transition-all animate-fadeIn"></div>
+                </div>
+
+                <!-- RIGHT AREA: CHECKOUT MATRIX (Target tracking window for image_878abf.png) -->
+                <div class="lg:col-span-7 bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-900 pb-3">
+                        <h3 class="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">Monthly Billing Checkout Matrix</h3>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-slate-400 select-none">Year:</span>
+                            <select id="pc_calendar_year_select" class="px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-500">
+                                <option value="${standardYear}" selected>${standardYear}</option>
+                                <option value="${standardYear - 1}">${standardYear - 1}</option>
+                                <option value="${standardYear + 1}">${standardYear + 1}</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Verified target rendering wrapper container grid matrix node -->
+                    <div id="pc_months_grid_container" class="grid grid-cols-3 sm:grid-cols-4 gap-2.5 min-h-[120px]">
+                        <!-- Checkbox matrix nodes must render cleanly here via JavaScript injection handlers -->
                     </div>
                 </div>
             </div>
+
+            <!-- LOWER TOTAL CODES ARRAY HOOK BLOCK -->
+            <div class="bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-sm grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                <div class="md:col-span-4 bg-slate-50 dark:bg-slate-900/40 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800/60">
+                    <label class="block text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Collection Processing Date</label>
+                    <input type="date" id="pc_pay_date" value="${standardDateIso}" class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm">
+                </div>
+                <div class="md:col-span-8 flex flex-col sm:flex-row sm:items-center sm:justify-end gap-5">
+                    <div class="flex items-center gap-4 bg-slate-50 dark:bg-slate-900/40 px-4 py-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 select-none">
+                        <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer">
+                            <input type="checkbox" id="pc_send_email_cb" class="w-4 h-4 rounded text-indigo-600 border-slate-300 accent-indigo-600 cursor-pointer">
+                            <span>📧 Email Receipt</span>
+                        </label>
+                        <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-800"></div>
+                        <label class="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer">
+                            <input type="checkbox" id="pc_send_whatsapp_cb" class="w-4 h-4 rounded text-emerald-600 border-slate-300 accent-emerald-600 cursor-pointer">
+                            <span>💬 WhatsApp text</span>
+                        </label>
+                    </div>
+                    <button type="button" id="collectorSubmitBtn" disabled class="px-6 py-3.5 bg-slate-900 hover:bg-slate-800 dark:bg-brand-600 dark:hover:bg-brand-500 text-white disabled:bg-slate-200 dark:disabled:bg-slate-900 disabled:text-slate-400 dark:disabled:text-slate-700 font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-between gap-6 disabled:cursor-not-allowed select-none min-w-[240px]">
+                        <span class="uppercase tracking-wider text-[11px] font-black">Execute Settlement</span>
+                        <span class="text-base font-black font-mono" id="lbl_pc_checkout_total">₹ 0.00</span>
+                    </button>
+                </div>
+            </div>
+        </div>
         `;
     }
 
@@ -443,8 +356,8 @@ window.PaymentCollectorModule = (function () {
      * Searches window.MasterCandidateCache by STUDENT_NAME, STUDENT_ID, and STUDENT_MOBILE.
      */
     function setupAutocomplete() {
-        var input = document.getElementById('collectorSearchInput');
-        var dropdown = document.getElementById('collectorAutocompleteDropdown');
+        var input = document.getElementById('collector_search_input');
+        var dropdown = document.getElementById('collector_search_dropdown');
         if (!input || !dropdown) return;
 
         var debounceTimer = null;
@@ -544,27 +457,52 @@ window.PaymentCollectorModule = (function () {
         _dueAnalysisComplete = false;
 
         // Update search input
-        var input = document.getElementById('collectorSearchInput');
+        var input = document.getElementById('collector_search_input') || document.getElementById('collectorSearchInput');
         if (input) input.value = candidate.STUDENT_NAME || '';
 
         // Close dropdown
-        var dropdown = document.getElementById('collectorAutocompleteDropdown');
+        var dropdown = document.getElementById('collector_search_dropdown') || document.getElementById('collectorAutocompleteDropdown');
         if (dropdown) dropdown.classList.add('hidden');
 
-        // Populate profile card
-        var card = document.getElementById('collectorSelectedCard');
-        if (card) card.classList.remove('hidden');
+        // Populate premium profile card
+        var cardEmpty = document.getElementById('pc_student_card_empty');
+        var cardData = document.getElementById('pc_student_card_data');
+        if (cardEmpty) cardEmpty.classList.add('hidden');
+        if (cardData) cardData.classList.remove('hidden');
 
         var initial = candidate.STUDENT_NAME ? candidate.STUDENT_NAME.charAt(0).toUpperCase() : '?';
-        setTextById('collectorAvatarInitial', initial);
-        setTextById('collectorStudentName', candidate.STUDENT_NAME || '—');
-        setTextById('collectorStudentCourse', candidate.ENROLLED_COURSE || '—');
-        setTextById('collectorStudentId', candidate.STUDENT_ID || '—');
-        setTextById('collectorRollNo', candidate.RL_NO || '—');
-        setTextById('collectorStudentMobile', candidate.STUDENT_MOBILE || '—');
+        setTextById('lbl_pc_avatar', initial);
+        setTextById('lbl_pc_name', candidate.STUDENT_NAME || '—');
+        setTextById('lbl_pc_id', candidate.STUDENT_ID || '—');
+        setTextById('lbl_pc_roll', candidate.RL_NO || '—');
+        setTextById('lbl_pc_phone', candidate.STUDENT_MOBILE || '—');
 
         var admDate = parseAdmissionDate(candidate.DATE_OF_ADMISSION);
-        setTextById('collectorAdmissionDate', formatDateDisplay(admDate));
+        var banner = document.getElementById('lbl_pc_meta_banner');
+        if (banner) {
+            banner.textContent = 'Admission: ' + formatDateDisplay(admDate) + ' · Fee Rate: ₹' + feeConfig.monthlyFee + '/month';
+        }
+
+        // Enable Due Checker Button
+        var dueBtn = document.getElementById('pc_due_checker_btn');
+        if (dueBtn) dueBtn.disabled = false;
+
+        // Bridge: Install Payment Ledger Redirect Action
+        var ledgerBtn = document.getElementById('pc_ledger_redirect_btn');
+        if (ledgerBtn) {
+            ledgerBtn.onclick = async function() {
+                if (window.AppCore && window.AppCore.navigateTo) {
+                    await window.AppCore.navigateTo('paymentLedger');
+                    var ledgerSearch = document.getElementById('ledgerSearchInput');
+                    if (ledgerSearch) {
+                        ledgerSearch.value = candidate.STUDENT_ID || candidate.STUDENT_NAME;
+                        if (window.PaymentLedgerModule && window.PaymentLedgerModule.applyLedgerFilters) {
+                            window.PaymentLedgerModule.applyLedgerFilters();
+                        }
+                    }
+                }
+            };
+        }
 
         // Reset the month grid (unlock all, uncheck all)
         resetMonthGrid();
@@ -588,11 +526,16 @@ window.PaymentCollectorModule = (function () {
         _mergedLogs = [];
         _dueAnalysisComplete = false;
 
-        var input = document.getElementById('collectorSearchInput');
+        var input = document.getElementById('collector_search_input') || document.getElementById('collectorSearchInput');
         if (input) input.value = '';
 
-        var card = document.getElementById('collectorSelectedCard');
-        if (card) card.classList.add('hidden');
+        var cardEmpty = document.getElementById('pc_student_card_empty');
+        var cardData = document.getElementById('pc_student_card_data');
+        if (cardEmpty) cardEmpty.classList.remove('hidden');
+        if (cardData) cardData.classList.add('hidden');
+
+        var dueBtn = document.getElementById('pc_due_checker_btn');
+        if (dueBtn) dueBtn.disabled = true;
 
         resetMonthGrid();
         hideDueSummary();
@@ -608,7 +551,7 @@ window.PaymentCollectorModule = (function () {
      * Each month is a styled card with a checkbox, icon, and label.
      */
     function buildMonthGrid() {
-        var grid = document.getElementById('collectorMonthGrid');
+        var grid = document.getElementById('pc_months_grid_container');
         if (!grid) return;
 
         var html = '';
@@ -701,11 +644,8 @@ window.PaymentCollectorModule = (function () {
 
         var total = newCount * feeConfig.monthlyFee;
 
-        var totalEl = document.getElementById('collectorCheckoutTotal');
+        var totalEl = document.getElementById('lbl_pc_checkout_total') || document.getElementById('collectorCheckoutTotal');
         if (totalEl) totalEl.textContent = '₹ ' + total.toLocaleString('en-IN');
-
-        var breakdownEl = document.getElementById('collectorCheckoutBreakdown');
-        if (breakdownEl) breakdownEl.textContent = '(' + newCount + ' month' + (newCount !== 1 ? 's' : '') + ' × ₹' + feeConfig.monthlyFee + ')';
 
         var counterEl = document.getElementById('collectorMonthCounter');
         if (counterEl) counterEl.textContent = newCount + ' selected';
@@ -727,26 +667,26 @@ window.PaymentCollectorModule = (function () {
      * waterfall to detect outstanding dues across year boundaries, locks paid months,
      * and renders the due summary panel.
      */
-    async function checkDueAndHistory() {
+    window.triggerPremiumDueAnalysis = async function() {
         if (!_selectedCandidate) {
             if (window.UIUtils) window.UIUtils.showToast('Please select a student first.', 'error');
             return;
         }
 
-        var yearInput = document.getElementById('collectorYearInput');
+        var yearInput = document.getElementById('pc_calendar_year_select');
         var yearVal = yearInput ? yearInput.value : '';
         if (!/^\d{4}$/.test(yearVal)) {
-            if (window.UIUtils) window.UIUtils.showToast('Please enter a valid 4-digit year.', 'error');
+            if (window.UIUtils) window.UIUtils.showToast('Please select a valid year.', 'error');
             return;
         }
         _calendarYear = parseInt(yearVal, 10);
 
         var studentId = String(_selectedCandidate.STUDENT_ID);
-        var checkBtn = document.getElementById('collectorCheckDueBtn');
+        var checkBtn = document.getElementById('pc_due_checker_btn');
 
         if (checkBtn) {
             checkBtn.disabled = true;
-            checkBtn.innerHTML = '<svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analyzing...';
+            checkBtn.innerHTML = '⏳ Computing...';
         }
 
         try {
@@ -772,7 +712,6 @@ window.PaymentCollectorModule = (function () {
 
             var paidMonthsMap = buildPaidMonthsMap(_mergedLogs, _calendarYear);
 
-            // FIX: Check against standard 'YYYY-01' format instead of 'January-YYYY'
             var januaryKey = _calendarYear + '-01';
             var januaryPaid = paidMonthsMap[januaryKey] === true;
             var prevYearLogs = [];
@@ -794,7 +733,7 @@ window.PaymentCollectorModule = (function () {
             var analysis = computeDueAnalysis(paidMonthsMap, admMonth, admYear, _calendarYear, endMonth, prevYearLogs.length > 0 ? _calendarYear - 1 : null);
             _dueAnalysisComplete = true;
 
-            renderDueSummary(analysis);
+            renderPremiumDueViewer(analysis);
 
             if (window.UIUtils) window.UIUtils.showToast('Payment history loaded for ' + _selectedCandidate.STUDENT_NAME + '.', 'success');
 
@@ -804,10 +743,14 @@ window.PaymentCollectorModule = (function () {
         } finally {
             if (checkBtn) {
                 checkBtn.disabled = false;
-                checkBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg> Check Due & History';
+                checkBtn.innerHTML = '🔍 Check Outstanding Dues';
             }
             updateCheckoutTotal();
         }
+    }
+
+    async function checkDueAndHistory() {
+        return window.triggerPremiumDueAnalysis();
     }
 
     /**
@@ -964,85 +907,65 @@ window.PaymentCollectorModule = (function () {
      * Renders the high-visibility due summary warning panel.
      * @param {Object} analysis - Output from computeDueAnalysis()
      */
-    function renderDueSummary(analysis) {
-        var bar = document.getElementById('collectorDueSummaryBar');
-        if (!bar) return;
+    function renderPremiumDueViewer(analysis) {
+        var viewer = document.getElementById('pc_premium_due_viewer');
+        if (!viewer) return;
 
         var isClean = analysis.dueMonths === 0;
-        var borderColor = isClean ? 'border-emerald-400 dark:border-emerald-500' : 'border-amber-400 dark:border-amber-500';
-        var bgColor = isClean ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-amber-50 dark:bg-amber-900/20';
-        var headerBg = isClean ? 'bg-emerald-500' : 'bg-gradient-to-r from-amber-500 to-rose-500';
-        var headerIcon = isClean
-            ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
-            : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
-        var headerTitle = isClean ? 'All Dues Cleared ✓' : '⚠️ Outstanding Dues Detected';
+        
+        var headerClass = isClean ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-500';
+        var bgClass = isClean ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/50' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/50';
+        var iconStr = isClean ? '✓ All Clear' : '⚠️ Due Detected';
 
-        bar.className = 'rounded-2xl border-2 overflow-hidden shadow-sm transition-all duration-300 ' + borderColor;
-
-        var unpaidListHtml = '';
+        var unpaidList = '';
         if (analysis.unpaidPeriods.length > 0) {
-            unpaidListHtml = '<div class="mt-3"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Unpaid Periods</p><div class="flex flex-wrap gap-1.5">';
+            unpaidList = '<div class="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-700/50">' +
+                '<span class="text-[9px] font-black uppercase text-slate-400 block mb-2 tracking-wider">Unpaid Line Listings</span>' +
+                '<div class="flex flex-wrap gap-1.5">';
             for (var u = 0; u < analysis.unpaidPeriods.length; u++) {
-                unpaidListHtml += '<span class="px-2.5 py-1 bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold rounded-lg border border-rose-200 dark:border-rose-800">' + analysis.unpaidPeriods[u] + '</span>';
+                unpaidList += '<span class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-[10px] font-bold text-slate-600 dark:text-slate-300 shadow-sm">' + analysis.unpaidPeriods[u] + '</span>';
             }
-            unpaidListHtml += '</div></div>';
+            unpaidList += '</div></div>';
         }
 
-        var cascadeNote = '';
-        if (analysis.cascaded) {
-            cascadeNote = '<div class="mt-3 flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">' +
-                '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>' +
-                'Backward cascade: Previous year\'s log sheet was also scanned for continuity.' +
-                '</div>';
-        }
+        viewer.innerHTML = `
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-black uppercase tracking-wider ${headerClass}">${iconStr}</span>
+                <span class="text-[10px] font-bold text-slate-400">Analysis Complete</span>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-2 mt-2">
+                <div class="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center shadow-sm">
+                    <span class="block text-[9px] font-bold text-slate-400 uppercase">Paid Logs</span>
+                    <span class="block text-sm font-black text-emerald-600 dark:text-emerald-400">${analysis.paidMonths}</span>
+                </div>
+                <div class="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center shadow-sm">
+                    <span class="block text-[9px] font-bold text-slate-400 uppercase">Pending</span>
+                    <span class="block text-sm font-black text-amber-500 dark:text-amber-400">${analysis.dueMonths}</span>
+                </div>
+                <div class="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center shadow-sm">
+                    <span class="block text-[9px] font-bold text-slate-400 uppercase">Balance</span>
+                    <span class="block text-sm font-black text-rose-500 dark:text-rose-400">₹${analysis.dueAmount.toLocaleString('en-IN')}</span>
+                </div>
+            </div>
+            ${unpaidList}
+        `;
+        viewer.className = `mt-3 p-4 border rounded-xl space-y-3 transition-all animate-fadeIn ${bgClass}`;
+        viewer.classList.remove('hidden');
+    }
 
-        bar.innerHTML =
-            '<div class="' + headerBg + ' px-5 py-3 flex items-center gap-2 text-white font-extrabold text-sm">' +
-                headerIcon +
-                '<span>' + headerTitle + '</span>' +
-            '</div>' +
-            '<div class="' + bgColor + ' p-5">' +
-                '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">' +
-                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-slate-200 dark:border-slate-700 text-center">' +
-                        '<span class="text-[10px] font-black text-slate-400 uppercase block">Expected</span>' +
-                        '<span class="text-2xl font-black text-slate-800 dark:text-white tabular-nums">' + analysis.expectedMonths + '</span>' +
-                        '<span class="text-[10px] text-slate-400 block">months</span>' +
-                    '</div>' +
-                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-emerald-200 dark:border-emerald-800 text-center">' +
-                        '<span class="text-[10px] font-black text-emerald-500 uppercase block">Paid</span>' +
-                        '<span class="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">' + analysis.paidMonths + '</span>' +
-                        '<span class="text-[10px] text-emerald-400 block">verified</span>' +
-                    '</div>' +
-                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-rose-200 dark:border-rose-800 text-center">' +
-                        '<span class="text-[10px] font-black text-rose-500 uppercase block">Due</span>' +
-                        '<span class="text-2xl font-black text-rose-600 dark:text-rose-400 tabular-nums">' + analysis.dueMonths + '</span>' +
-                        '<span class="text-[10px] text-rose-400 block">months</span>' +
-                    '</div>' +
-                    '<div class="bg-white dark:bg-slate-800 rounded-xl px-4 py-3 border border-amber-200 dark:border-amber-800 text-center">' +
-                        '<span class="text-[10px] font-black text-amber-500 uppercase block">Amount Due</span>' +
-                        '<span class="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums">₹' + analysis.dueAmount.toLocaleString('en-IN') + '</span>' +
-                        '<span class="text-[10px] text-amber-400 block">total</span>' +
-                    '</div>' +
-                '</div>' +
-                unpaidListHtml +
-                cascadeNote +
-                '<div class="mt-3 text-[11px] text-slate-400 font-medium">' +
-                    'Admission: ' + MONTH_NAMES[analysis.admMonth] + ' ' + analysis.admYear +
-                    ' · Fee Rate: ₹' + feeConfig.monthlyFee + '/month' +
-                '</div>' +
-            '</div>';
-
-        bar.classList.remove('hidden');
+    function renderDueSummary(analysis) {
+        renderPremiumDueViewer(analysis);
     }
 
     /**
      * Hides the due summary bar.
      */
     function hideDueSummary() {
-        var bar = document.getElementById('collectorDueSummaryBar');
-        if (bar) {
-            bar.classList.add('hidden');
-            bar.innerHTML = '';
+        var viewer = document.getElementById('pc_premium_due_viewer');
+        if (viewer) {
+            viewer.classList.add('hidden');
+            viewer.innerHTML = '';
         }
     }
 
@@ -1088,7 +1011,11 @@ window.PaymentCollectorModule = (function () {
         if (spinner) spinner.classList.remove('hidden');
 
         try {
-            var timestamp = new Date().toISOString();
+            // Extract explicit processing date string from dashboard wrapper view
+            var payDateInput = document.getElementById('pc_pay_date');
+            var timestamp = (payDateInput && payDateInput.value) 
+                ? new Date(payDateInput.value).toISOString() 
+                : new Date().toISOString();
             var payloadArray = [];
 
             for (var j = 0; j < newMonths.length; j++) {

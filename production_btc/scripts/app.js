@@ -104,14 +104,18 @@ window.AppCore = (function () {
         MODULES.forEach(mod => {
             const li = document.createElement('li');
             li.innerHTML = `
-                <button id="nav-btn-${mod.id}" onclick="window.AppCore.navigateTo('${mod.id}')" class="w-full flex items-center justify-center sm:justify-start gap-3 px-3 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-brand-600 dark:hover:text-brand-400 transition-all text-sm text-left">
-                    <span class="shrink-0">${mod.icon}</span>
-                    <span class="truncate hidden sm:block">${mod.title}</span>
+                <button id="nav-btn-${mod.id}" onclick="window.AppCore.navigateTo('${mod.id}')"
+                    class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-500 dark:text-slate-400 font-semibold hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-brand-600 dark:hover:text-brand-400 transition-all text-sm text-left overflow-hidden">
+                    <!-- Icon — always visible, fixed width anchor -->
+                    <span class="nav-icon-wrap shrink-0 w-5 h-5 flex items-center justify-center">${mod.icon}</span>
+                    <!-- Label — hidden when collapsed, revealed on sidebar hover via CSS -->
+                    <span class="sidebar-label text-xs font-bold tracking-wide">${mod.title}</span>
                 </button>
             `;
             sidebar.appendChild(li);
         });
     }
+
 
     /**
      * Handles visual active states in the sidebar

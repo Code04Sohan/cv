@@ -33,12 +33,26 @@ const CONFIG = {
  */
 const SHEET_TEMPLATES = {
   // Primary Master Ingestion Row Layout
+  /**
+   * Primary Master Ingestion Row Layout
+   * ─────────────────────────────────────────────────────────────────────────
+   * COLUMN ORDER IS SACRED — any structural change requires a coordinated
+   * sheet migration. IS_DELETED is intentionally the terminal column so that
+   * all existing row ranges remain backward-compatible with legacy data.
+   *
+   * IS_DELETED  (Boolean / soft-delete flag)
+   *   • FALSE / empty  → Active profile, included in all directory reads.
+   *   • TRUE           → Soft-deleted; filtered server-side before the JSON
+   *                      response payload is assembled.  The physical row is
+   *                      never removed (zero structural row shifts).
+   */
   MasterRecord: [
-    'STUDENT_ID', 'RL_NO', 'SESSION', 'DATE_OF_ADMISSION', 'ENROLLED_COURSE', 'CLASS_BATCH_DAYS', 
-    'STUDENT_NAME', 'DOB', 'GENDER', 'BLOOD_GROUP', 'RELIGION', 'STUDENT_AADHAR', 'CATEGORY', 'STUDENT_MOBILE', 'CONTACT_EMAIL', 'HOME_ADDRESS', 'PHYSICAL_DISABILITY', 
-    'FATHER_NAME', 'FATHER_MOBILE', 'MOTHER_NAME', 'MOTHER_MOBILE', 'GUARDIAN_RELATION', 'GUARDIAN_NAME', 'GUARDIAN_MOBILE', 
-    'DECLARATION_1', 'DECLARATION_2', 'PAYABLE_AMOUNT', 'IS_FEE_PAID', 'PAYMENT_MODE', 'TXN_ID', 
-    'STUDENT_PHOTO_URL', 'STUDENT_SIGNATURE_URL', 'TIMESTAMP'
+    'STUDENT_ID', 'RL_NO', 'SESSION', 'DATE_OF_ADMISSION', 'ENROLLED_COURSE', 'CLASS_BATCH_DAYS',
+    'STUDENT_NAME', 'DOB', 'GENDER', 'BLOOD_GROUP', 'RELIGION', 'STUDENT_AADHAR', 'CATEGORY', 'STUDENT_MOBILE', 'CONTACT_EMAIL', 'HOME_ADDRESS', 'PHYSICAL_DISABILITY',
+    'FATHER_NAME', 'FATHER_MOBILE', 'MOTHER_NAME', 'MOTHER_MOBILE', 'GUARDIAN_RELATION', 'GUARDIAN_NAME', 'GUARDIAN_MOBILE',
+    'DECLARATION_1', 'DECLARATION_2', 'PAYABLE_AMOUNT', 'IS_FEE_PAID', 'PAYMENT_MODE', 'TXN_ID',
+    'STUDENT_PHOTO_URL', 'STUDENT_SIGNATURE_URL', 'TIMESTAMP',
+    'IS_DELETED'   // ⚑ SOFT-DELETE FLAG — Terminal schema column. Boolean TRUE = archived.
   ],
 
   // Payment Ledger Row Layout (Fee Collector Module — Annual Sharded Tabs: Logs_YYYY)
@@ -175,6 +189,9 @@ function doPost(e) {
       case "SEND_RUNTIME_EMAIL_ATTACHMENT":
         return handleSendRuntimeEmailAttachment(payload);
 
+      case "FETCH_MONTHLY_LEDGER":
+        return handleFetchMonthlyLedger(payload);
+
       default:
         return createResponse({ status: "error", message: "Unknown action." });
     }
@@ -184,40 +201,227 @@ function doPost(e) {
 }
 
 /**
+ * handleFetchMonthlyLedger
+ * -------------------------------------------------------------------
+ * Opens the target annual shard (Logs_YYYY) and isolates transaction records
+ * matching the targeted numeric month parameter using fast string matching.
+ * 
+ * @param {Object} requestPayload Contains targetYear, targetMonth (string format, e.g. "07")
+ */
+function handleFetchMonthlyLedger(requestPayload) {
+  try {
+    var targetYear = requestPayload.year || String(new Date().getFullYear());
+    var targetMonth = requestPayload.month; // Expected zero-padded string format, e.g., "01" through "12"
+    
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    
+    // 2. Smart Sheet Tab Fallback
+    var sheet = ss.getSheetByName("Logs_" + targetYear) || 
+                ss.getSheetByName("Logs") || 
+                ss.getSheetByName("Payment_Logs");
+    
+    // Safety fallback if no tabs exist
+    if (!sheet) {
+      return createResponse({ status: "success", data: [], message: "Log sheet for year " + targetYear + " not found." });
+    }
+    
+    var rawData = sheet.getDataRange().getValues();
+    if (rawData.length <= 1) {
+      return createResponse({ status: "success", data: [] });
+    }
+    
+    var headers = rawData[0];
+    
+    // 1. Smart Column Header Detection
+    var getColIndex = function(headerArray, possibleNames) {
+      for (var i = 0; i < possibleNames.length; i++) {
+        var idx = headerArray.indexOf(possibleNames[i]);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+    
+    var txnIdIdx = headers.indexOf("TXN_ID");
+    var studentNameIdx = headers.indexOf("STUDENT_NAME");
+    var feePeriodIdx = headers.indexOf("FEE_PERIOD");
+    var amountIdx = headers.indexOf("AMOUNT_COLLECTED");
+    
+    var studentIdIdx = getColIndex(headers, ["STUDENT_ID", "ID", "REGISTRATION_NO"]);
+    var dateIdx = getColIndex(headers, ["TRANSACTION_DATE", "DATE", "TIMESTAMP", "PAYMENT_DATE", "DATE_OF_PAYMENT"]);
+    
+    var filteredMonthlyLogs = [];
+
+    // Loop through database records backwards to maintain recent-first order natively
+    for (var i = rawData.length - 1; i >= 1; i--) {
+      var row = rawData[i];
+      var rawDateValue = row[dateIdx];
+      
+      if (!rawDateValue) continue;
+      
+      // 3. Universal Date/Month Extractor
+      var parsedMonth = "";
+      var dateString = "";
+      
+      if (rawDateValue instanceof Date) {
+        parsedMonth = Utilities.formatDate(rawDateValue, Session.getScriptTimeZone(), "MM");
+        dateString = Utilities.formatDate(rawDateValue, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      } else {
+        dateString = String(rawDateValue).trim();
+        var parts = dateString.split(/[\/\-]/);
+        if (parts.length >= 3) {
+            // Covers both YYYY-MM-DD and DD/MM/YYYY formats
+            var extracted = String(parts[1]).trim();
+            parsedMonth = extracted.length === 1 ? "0" + extracted : extracted;
+        }
+      }
+
+      // 4. Absolute Wildcard Check
+      var isWildcard = !targetMonth || targetMonth === "ALL" || targetMonth === "All Months" || targetMonth === "";
+      
+      // SERVER-SIDE PRE-FILTER MATCH: Skip rows that do not match the selected target month
+      if (!isWildcard && parsedMonth !== targetMonth) {
+        continue;
+      }
+
+      filteredMonthlyLogs.push({
+        TXN_ID: txnIdIdx !== -1 ? String(row[txnIdIdx]) : "",
+        STUDENT_NAME: studentNameIdx !== -1 ? String(row[studentNameIdx]) : "",
+        STUDENT_ID: studentIdIdx !== -1 ? String(row[studentIdIdx]) : "",
+        FEE_PERIOD: feePeriodIdx !== -1 ? String(row[feePeriodIdx]) : "",
+        AMOUNT_COLLECTED: amountIdx !== -1 ? Number(row[amountIdx]) : 0,
+        TRANSACTION_DATE: dateString
+      });
+    }
+
+    return createResponse({
+      status: "success",
+      data: filteredMonthlyLogs
+    });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Server Monthly Ledger Query Pipeline Failure: " + error.toString()
+    });
+  }
+}
+
+
+/**
  * ==========================================
- * 🗑️ RECORD DELETION ENGINE
+ * 🗑️ RECORD SOFT-DELETION ENGINE (IS_DELETED Flag Writer)
  * ==========================================
+ * Architectural Contract:
+ *   ZERO STRUCTURAL ROW SHIFTS. This function NEVER calls sheet.deleteRow().
+ *   Instead it locates the target student profile row and writes boolean TRUE
+ *   into the designated IS_DELETED column cell, archiving the record in-place.
+ *
+ * Execution Pipeline:
+ *   1. Resolve the IS_DELETED column index dynamically from the live header row.
+ *      This makes the engine immune to future column reordering.
+ *   2. Scan Column A (STUDENT_ID) for an exact match via TextFinder.
+ *   3. Guard: reject if student is already soft-deleted (idempotent safety).
+ *   4. Guard: reject if IS_DELETED column does not exist in the sheet schema
+ *      (prevents silent data writes to the wrong cell).
+ *   5. Write boolean TRUE to the IS_DELETED cell via a single targeted setValues()
+ *      call — minimum surface area, maximum write speed.
+ *
+ * Downstream Effects:
+ *   • handleFetchDirectory() server-side pre-filter will silently discard
+ *     this row on all subsequent directory ingestion calls.
+ *   • Historical Logs_YYYY payment ledger shards are completely unaffected.
+ *     They cross-reference by STUDENT_ID only — no row index dependency.
+ *   • handleEditRecord() continues to work against this row if an admin
+ *     needs to inspect or restore the profile in a future Phase.
  */
 function handleDeleteRecord(payload) {
   try {
     var spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     var sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
-    
+
     if (!sheet) {
-      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Error: Database sheet not found." })).setMimeType(ContentService.MimeType.JSON);
+      return createResponse({ success: false, status: "error", message: "Error: Database sheet not found." });
     }
 
     var studentId = String(payload.STUDENT_ID);
-    
-    // Column Isolation Guard
-    var idColumnRange = sheet.getRange(1, 1, sheet.getLastRow(), 1);
-    var finder = idColumnRange.createTextFinder(studentId).matchEntireCell(true);
-    var results = finder.findAll();
 
-    // Validation Gate
-    if (results.length === 0) {
-      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Error: Student ID not found in database." })).setMimeType(ContentService.MimeType.JSON);
+    // ── STEP 1: Pull full data range into RAM in a single API call ─────────
+    var rawData = sheet.getDataRange().getValues();
+
+    if (rawData.length <= 1) {
+      return createResponse({ success: false, status: "error", message: "Error: Directory is empty." });
     }
 
-    // Execution Block
-    var targetRow = results[0].getRow();
-    sheet.deleteRow(targetRow);
+    var headers = rawData[0];
 
-    // MIME Format Output
-    var output = { success: true, message: "Record permanently deleted." };
-    return ContentService.createTextOutput(JSON.stringify(output)).setMimeType(ContentService.MimeType.JSON);
+    // ── STEP 2: Resolve IS_DELETED column index from the live header row ───
+    // Dynamic resolution ensures correctness regardless of column ordering.
+    var deletedColIdx = headers.indexOf("IS_DELETED");
+
+    if (deletedColIdx === -1) {
+      // Schema guard: IS_DELETED column has not yet been added to the sheet.
+      // Instruct the administrator to append the column before soft-deletes
+      // can be committed — prevents writing TRUE into the wrong cell.
+      return createResponse({
+        success: false,
+        status: "error",
+        message: "Schema Error: IS_DELETED column not found in sheet headers. " +
+                 "Please add an IS_DELETED column as the last column of the '" +
+                 CONFIG.MASTER_SHEET_NAME + "' sheet before performing deletions."
+      });
+    }
+
+    // ── STEP 3: Locate target row by STUDENT_ID match ──────────────────────
+    var targetRowIndex = -1; // 0-based within rawData (includes header at [0])
+
+    for (var i = 1; i < rawData.length; i++) {
+      if (String(rawData[i][0]).trim() === studentId.trim()) {
+        targetRowIndex = i;
+        break;
+      }
+    }
+
+    // Validation Gate: student not found
+    if (targetRowIndex === -1) {
+      return createResponse({ success: false, status: "error", message: "Error: Student ID '" + studentId + "' not found in database." });
+    }
+
+    // ── STEP 4: Idempotency Guard ───────────────────────────────────────────
+    // If the row is already soft-deleted, reject silently to prevent
+    // duplicate archival signals and unnecessary write quota consumption.
+    var existingFlag = rawData[targetRowIndex][deletedColIdx];
+    if (existingFlag === true || String(existingFlag).toUpperCase() === "TRUE") {
+      return createResponse({
+        success: false,
+        status: "error",
+        message: "Conflict: Student ID '" + studentId + "' has already been archived (IS_DELETED = TRUE)."
+      });
+    }
+
+    // ── STEP 5: Write IS_DELETED = TRUE (Soft-Delete Commit) ───────────────
+    // Convert both indexes to 1-based spreadsheet coordinates.
+    //   targetRowIndex is 0-based in rawData (header = row 0),
+    //   so the sheet row number = targetRowIndex + 1.
+    //   deletedColIdx is 0-based, so the sheet column number = deletedColIdx + 1.
+    var sheetRowNumber = targetRowIndex + 1;
+    var sheetColNumber = deletedColIdx + 1;
+
+    // Targeted single-cell write — minimum API surface, zero row shifting.
+    sheet.getRange(sheetRowNumber, sheetColNumber).setValue(true);
+
+    return createResponse({
+      success: true,
+      status: "success",
+      message: "Student ID '" + studentId + "' has been soft-deleted and archived successfully. " +
+               "The physical row is preserved. The profile will no longer appear in the active directory."
+    });
+
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, message: "Exception: " + error.toString() })).setMimeType(ContentService.MimeType.JSON);
+    return createResponse({
+      success: false,
+      status: "error",
+      message: "Soft-Delete Engine Exception: " + error.toString()
+    });
   }
 }
 
@@ -305,37 +509,93 @@ function getOrCreateDriveFolder(folderName) {
 }
 
 /**
- * Fetches all records from the directory securely mapped to headers
+ * handleFetchDirectory — Directory Ingestion Pipeline (Soft-Delete Aware)
+ * ─────────────────────────────────────────────────────────────────────────
+ * Reads the master student registry from the spreadsheet, resolves the
+ * IS_DELETED column index dynamically at runtime, and enforces a
+ * SERVER-SIDE PRE-FILTER that silently discards every soft-deleted row
+ * before the JSON response payload is compiled.
+ *
+ * Why server-side?  Keeping deleted profiles off the wire ensures:
+ *   • Minimal network payload to the browser cache.
+ *   • Autocomplete, search, and all client modules stay clean without
+ *     requiring any frontend rewrites or filter decorators.
+ *   • Historical financial ledger tabs (Logs_YYYY) are completely
+ *     unaffected — they carry their own STUDENT_ID cross-reference
+ *     and will continue to process normally.
+ *
+ * Pre-Filter Gate Logic:
+ *   row[deletedIdx] === true          → boolean TRUE  (Sheets checkbox)
+ *   String(row[deletedIdx]).toUpperCase() === "TRUE" → string "TRUE"
+ *   Either condition → row skipped; never enters activeCandidates[].
+ *
+ * Backwards Compatibility:
+ *   If IS_DELETED column is absent (deletedIdx === -1), the guard is a
+ *   no-op and all rows are returned — matching the previous behaviour
+ *   so that existing deployments without the column are unharmed.
  */
 function handleFetchDirectory(payload) {
-  const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
-  
-  if (!sheet) {
-    return createResponse({ status: "success", data: [] });
-  }
-  
-  const dataRange = sheet.getDataRange();
-  const allValues = dataRange.getValues();
-  
-  if (allValues.length <= 1) {
-    return createResponse({ status: "success", data: [] });
-  }
-  
-  const headers = allValues[0];
-  const records = [];
-  
-  // Dynamically pack rows using the true runtime sheet headers
-  for (let i = 1; i < allValues.length; i++) {
-    const row = allValues[i];
-    const record = {};
-    for (let j = 0; j < headers.length; j++) {
-      record[headers[j]] = row[j];
+  try {
+    const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
+
+    if (!sheet) {
+      return createResponse({ status: "success", data: [] });
     }
-    records.push(record);
+
+    // ⚡ SINGLE READ: Pull the entire data range into RAM in one API call
+    const rawData = sheet.getDataRange().getValues();
+
+    if (rawData.length <= 1) {
+      return createResponse({ status: "success", data: [] });
+    }
+
+    const headers = rawData[0];
+
+    // ── Resolve the IS_DELETED column index dynamically ──────────────────
+    // Using indexOf() at runtime means the filter is immune to future column
+    // reordering as long as the header string remains "IS_DELETED".
+    const deletedIdx = headers.indexOf("IS_DELETED");
+
+    const activeCandidates = [];
+
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+
+      // ── SERVER-SIDE PRE-FILTER ────────────────────────────────────────
+      // Skip this row entirely if the IS_DELETED cell is flagged true.
+      // Two-branch check covers both a native Sheets boolean checkbox
+      // (=== true) and a plain text representation ("TRUE") for maximum
+      // interoperability with manual sheet edits.
+      if (deletedIdx !== -1) {
+        const deletedFlag = row[deletedIdx];
+        if (deletedFlag === true || String(deletedFlag).toUpperCase() === "TRUE") {
+          continue; // Row is soft-deleted — discard silently, never stream
+        }
+      }
+
+      // ── DYNAMIC HEADER-MAPPED ROW PACK ───────────────────────────────
+      // Build the record object against the live runtime headers so that
+      // any non-IS_DELETED columns added to the sheet in future releases
+      // are automatically included without requiring a backend redeploy.
+      const record = {};
+      for (let j = 0; j < headers.length; j++) {
+        const header = headers[j];
+        if (header === "IS_DELETED") continue; // Strip flag — internal metadata only
+        record[header] = row[j];
+      }
+
+      activeCandidates.push(record);
+    }
+
+    return createResponse({ status: "success", data: activeCandidates });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Directory Ingestion Pipeline Failure: " + error.toString()
+    });
   }
-  
-  return createResponse({ status: "success", data: records });
 }
 
 /**

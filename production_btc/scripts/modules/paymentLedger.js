@@ -24,6 +24,10 @@ window.PaymentLedgerModule = (function () {
     let _rawLedgerDataset = [];
     window.currentFilteredLedgerDataset = [];
 
+    let _ledgerCurrentPage = 1;
+    const _ledgerRowsPerPage = 10; // Optimized view count window for financial log views
+    let _ledgerFilteredPool = [];  // Dynamic storage cache array for filtered data structures
+
     // =========================================
     // 🔧 UTILITY HELPERS
     // =========================================
@@ -64,9 +68,6 @@ window.PaymentLedgerModule = (function () {
 
         // Populate course and batch dropdowns from MasterCandidateCache if available
         populateDropdowns();
-
-        // Default to current year range
-        setDefaultDateRange();
 
         // Perform initial fetch
         await fetchAndApplyFilters();
@@ -152,12 +153,32 @@ window.PaymentLedgerModule = (function () {
                             </select>
                         </div>
                         <div class="space-y-1.5">
-                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">From Date</label>
-                            <input type="date" id="ledgerFromDate" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Month</label>
+                            <select id="ledgerTargetMonth" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                                <option value="ALL">All Months</option>
+                                <option value="01">January</option>
+                                <option value="02">February</option>
+                                <option value="03">March</option>
+                                <option value="04">April</option>
+                                <option value="05">May</option>
+                                <option value="06">June</option>
+                                <option value="07">July</option>
+                                <option value="08">August</option>
+                                <option value="09">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
                         </div>
                         <div class="space-y-1.5">
-                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">To Date</label>
-                            <input type="date" id="ledgerToDate" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Year</label>
+                            <select id="ledgerTargetYear" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                                <option value="${new Date().getFullYear() + 1}">${new Date().getFullYear() + 1}</option>
+                                <option value="${new Date().getFullYear()}" selected>${new Date().getFullYear()}</option>
+                                <option value="${new Date().getFullYear() - 1}">${new Date().getFullYear() - 1}</option>
+                                <option value="${new Date().getFullYear() - 2}">${new Date().getFullYear() - 2}</option>
+                                <option value="${new Date().getFullYear() - 3}">${new Date().getFullYear() - 3}</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -203,6 +224,7 @@ window.PaymentLedgerModule = (function () {
                             </tbody>
                         </table>
                     </div>
+                    <div id="ledger_pagination_controls"></div>
                     <!-- Empty State -->
                     <div id="ledgerEmptyState" class="hidden flex-col items-center justify-center p-12 text-slate-400">
                         <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
@@ -262,20 +284,7 @@ window.PaymentLedgerModule = (function () {
         });
     }
 
-    function setDefaultDateRange() {
-        const fromInput = document.getElementById('ledgerFromDate');
-        const toInput = document.getElementById('ledgerToDate');
 
-        if (!fromInput || !toInput) return;
-
-        const currentYear = new Date().getFullYear();
-
-        // Fix: Standardized template string literal generation with zero escape errors
-        fromInput.value = `${currentYear}-01-01`;
-
-        const endOfDec = new Date(currentYear, 11, 31);
-        toInput.value = endOfDec.toISOString().split('T')[0];
-    }
 
     function toggleSpinner(show) {
         const spinner = document.getElementById('ledgerSpinner');
@@ -296,43 +305,28 @@ window.PaymentLedgerModule = (function () {
     // =========================================
 
     async function fetchAndApplyFilters() {
-        const fromInput = document.getElementById('ledgerFromDate');
-        const toInput = document.getElementById('ledgerToDate');
+        const monthInput = document.getElementById('ledgerTargetMonth');
+        const yearInput = document.getElementById('ledgerTargetYear');
 
-        if (!fromInput || !toInput) return;
+        if (!yearInput) return;
 
-        const dateFrom = new Date(fromInput.value);
-        const dateTo = new Date(toInput.value);
-
-        // Safety Check: Calculate total annual query span
-        const yearDifference = dateTo.getFullYear() - dateFrom.getFullYear();
-
-        if (yearDifference > 2) {
-            if (window.UIUtils && typeof window.UIUtils.showToast === 'function') {
-                window.UIUtils.showToast("To maintain high speed, please restrict your statement search window to a maximum duration of 2 consecutive years.", "warning");
-            } else {
-                alert("To maintain high speed, please restrict your statement search window to a maximum duration of 2 consecutive years.");
-            }
-            return; // Hard stop: Terminate network request execution to protect backend memory
-        }
-
-        const startDate = fromInput.value;
-        const endDate = toInput.value;
-
-        if (!startDate || !endDate) return;
+        const targetMonth = monthInput ? monthInput.value : '';
+        const targetYear = yearInput.value;
 
         toggleSpinner(true);
+        renderLedgerTableSkeleton(); // ⚡ Phase 1: Fire visual placeholders immediately
 
         try {
             const res = await window.UIUtils.fetchFromEngine({
-                action: 'FETCH_STATEMENT_RANGE',
+                action: 'FETCH_MONTHLY_LEDGER',
                 token: getAuthToken(),
-                startDate: startDate,
-                endDate: endDate
+                month: targetMonth,
+                year: targetYear
             });
 
             if (res && res.status === 'success' && Array.isArray(res.data)) {
                 _rawLedgerDataset = res.data;
+                initializeLedgerPool(_rawLedgerDataset);
             } else {
                 _rawLedgerDataset = [];
                 if (res && res.message) {
@@ -361,15 +355,10 @@ window.PaymentLedgerModule = (function () {
         const searchInput = document.getElementById('ledgerSearchInput');
         const courseSelect = document.getElementById('ledgerCourseFilter');
         const batchSelect = document.getElementById('ledgerBatchFilter');
-        const fromInput = document.getElementById('ledgerFromDate');
-        const toInput = document.getElementById('ledgerToDate');
 
         const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
         const courseQuery = courseSelect ? courseSelect.value : '';
         const batchQuery = batchSelect ? batchSelect.value : '';
-        
-        const startDate = fromInput && fromInput.value ? new Date(fromInput.value + 'T00:00:00') : null;
-        const endDate = toInput && toInput.value ? new Date(toInput.value + 'T23:59:59') : null;
 
         const candidateMap = {};
         if (window.MasterCandidateCache) {
@@ -393,23 +382,6 @@ window.PaymentLedgerModule = (function () {
 
             if (courseQuery && candidateInfo.course !== courseQuery) return false;
             if (batchQuery && candidateInfo.batch !== batchQuery) return false;
-
-            let matchesDate = true;
-            if (log.TIMESTAMP) {
-                let logDate = new Date(log.TIMESTAMP);
-                // Resilient parser for DD/MM/YYYY or MM/DD/YYYY from Sheets
-                if (isNaN(logDate.getTime()) && typeof log.TIMESTAMP === 'string') {
-                    const parts = log.TIMESTAMP.split(/[\/\-]/);
-                    if (parts.length === 3) {
-                        logDate = new Date(parts[2], parts[1] - 1, parts[0]);
-                    }
-                }
-                if (!isNaN(logDate.getTime())) {
-                    if (startDate && logDate < startDate) matchesDate = false;
-                    if (endDate && logDate > endDate) matchesDate = false;
-                }
-            }
-            if (!matchesDate) return false;
 
             if (query) {
                 const nameMatch = log.STUDENT_NAME && String(log.STUDENT_NAME).toLowerCase().includes(query);
@@ -440,36 +412,76 @@ window.PaymentLedgerModule = (function () {
         if (rowsText) rowsText.innerText = `Showing ${window.currentFilteredLedgerDataset.length} audited transaction logs.`;
         if (volText) volText.innerText = `₹ ${totalRevenue}`;
 
-        renderLedgerTable(window.currentFilteredLedgerDataset);
+        _ledgerFilteredPool = [...window.currentFilteredLedgerDataset];
+        _ledgerCurrentPage = 1;
+        renderPaginatedLedger();
     }
 
-    function renderLedgerTable(records) {
-        const tbody = document.getElementById('ledgerGridBody');
-        const emptyState = document.getElementById('ledgerEmptyState');
-        
-        if (!tbody) return;
+    function renderLedgerTableSkeleton() {
+        const targetBody = document.getElementById('ledgerGridBody');
+        if (!targetBody) return;
 
-        if (!records || records.length === 0) {
-            tbody.innerHTML = '';
-            if (emptyState) {
-                emptyState.classList.remove('hidden');
-                emptyState.classList.add('flex');
-            }
+        let skeletonHtml = '';
+        for (let i = 0; i < 8; i++) {
+            skeletonHtml += `
+            <tr class="animate-pulse border-b border-slate-100 dark:border-slate-800/50">
+                <td class="p-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-20 font-mono"></div></td>
+                <td class="p-3">
+                    <div class="space-y-1.5">
+                        <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-32"></div>
+                        <div class="h-3 bg-slate-100 dark:bg-slate-800 rounded w-24"></div>
+                    </div>
+                </td>
+                <td class="p-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-16"></div></td>
+                <td class="p-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-36 text-brand-600"></div></td>
+                <td class="p-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-16 font-mono"></div></td>
+                <td class="p-3 text-center"><div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-14 inline-block"></div></td>
+            </tr>`;
+        }
+        targetBody.innerHTML = skeletonHtml;
+    }
+
+    function initializeLedgerPool(rawLogsArray) {
+        // Reverse chronological sort: Pulls newest logs to the top via Txn string patterns or implicit row indices
+        _ledgerFilteredPool = [...rawLogsArray].sort((a, b) => {
+            return String(b.TXN_ID || '').localeCompare(String(a.TXN_ID || ''));
+        });
+        
+        _ledgerCurrentPage = 1;
+        renderPaginatedLedger();
+    }
+
+    function renderPaginatedLedger() {
+        const tableBody = document.getElementById('ledgerGridBody');
+        const controlsContainer = document.getElementById('ledger_pagination_controls');
+        if (!tableBody) return;
+
+        const totalItems = _ledgerFilteredPool.length;
+        const totalPages = Math.ceil(totalItems / _ledgerRowsPerPage) || 1;
+
+        // Boundary corrections
+        if (_ledgerCurrentPage > totalPages) _ledgerCurrentPage = totalPages;
+        if (_ledgerCurrentPage < 1) _ledgerCurrentPage = 1;
+
+        const startIdx = (_ledgerCurrentPage - 1) * _ledgerRowsPerPage;
+        const endIdx = Math.min(startIdx + _ledgerRowsPerPage, totalItems);
+        const displayedItems = _ledgerFilteredPool.slice(startIdx, endIdx);
+
+        if (displayedItems.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-xs font-bold text-slate-400 tracking-wide uppercase">No financial entries match your lookup preferences.</td></tr>`;
+            if (controlsContainer) controlsContainer.innerHTML = '';
             return;
         }
 
-        if (emptyState) {
-            emptyState.classList.remove('flex');
-            emptyState.classList.add('hidden');
-        }
-
-        let html = '';
-        records.forEach(item => {
+        // Map rows - Preserving our custom notification resend links inside the Name column cell frame
+        tableBody.innerHTML = displayedItems.map(item => {
+            // Re-apply display date formatting just as before, targeting backend variables
             let displayDate = 'N/A';
-            if (item.TIMESTAMP) {
-                let d = new Date(item.TIMESTAMP);
-                if (isNaN(d.getTime()) && typeof item.TIMESTAMP === 'string') {
-                    const parts = item.TIMESTAMP.split(/[\/\-]/);
+            const rawDate = item.TRANSACTION_DATE || item.DATE || item.TIMESTAMP;
+            if (rawDate) {
+                let d = new Date(rawDate);
+                if (isNaN(d.getTime()) && typeof rawDate === 'string') {
+                    const parts = rawDate.split(/[\/\-]/);
                     if (parts.length === 3) d = new Date(parts[2], parts[1] - 1, parts[0]);
                 }
                 if (!isNaN(d.getTime())) {
@@ -477,113 +489,65 @@ window.PaymentLedgerModule = (function () {
                     const month = d.toLocaleString('en-IN', { month: 'short' });
                     const year = d.getFullYear();
                     displayDate = `${day} ${month} ${year}`;
+                } else if (typeof rawDate === 'string') {
+                    displayDate = rawDate;
                 }
             }
-
-            const statusClass = item.STATUS === 'PAID' 
-                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-                : 'bg-rose-500/10 text-rose-500 border-rose-500/20';
 
             const courseBatchText = (item._course || item._batch) 
                 ? `${item._course || 'N/A'} <br> <span class="text-[10px] text-slate-500 dark:text-slate-400">${item._batch || ''}</span>`
                 : 'N/A';
 
-            html += `
-                <tr class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td class="px-5 py-4 text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">${displayDate}</td>
-                    <td class="px-5 py-4 text-sm font-mono text-slate-500 dark:text-slate-400">${item.TXN_ID || 'N/A'}</td>
-                    <td class="px-5 py-4">
-                        <div class="flex flex-col">
-                            <span class="text-sm font-bold text-slate-800 dark:text-white">${item.STUDENT_NAME || 'N/A'}</span>
-                            <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400">${item.STUDENT_ID || 'N/A'}</span>
-                            <div class="flex items-center gap-2 mt-1 text-[10px] font-bold tracking-wider select-none">
-                                <button type="button"
-                                    class="ledger-resend-btn text-indigo-500 hover:text-indigo-400 hover:underline transition-colors cursor-pointer"
-                                    data-action="email"
-                                    data-student-id="${escAttr(item.STUDENT_ID)}"
-                                    data-txn-id="${escAttr(item.TXN_ID)}"
-                                    data-amount="${escAttr(item.AMOUNT_COLLECTED)}"
-                                    data-fee-period="${escAttr(item.FEE_PERIOD)}"
-                                >📧 Resend Mail</button>
-                                <span class="text-slate-700/60 dark:text-slate-600">|</span>
-                                <button type="button"
-                                    class="ledger-resend-btn text-emerald-500 hover:text-emerald-400 hover:underline transition-colors cursor-pointer"
-                                    data-action="whatsapp"
-                                    data-student-id="${escAttr(item.STUDENT_ID)}"
-                                    data-txn-id="${escAttr(item.TXN_ID)}"
-                                    data-amount="${escAttr(item.AMOUNT_COLLECTED)}"
-                                    data-fee-period="${escAttr(item.FEE_PERIOD)}"
-                                >💬 Resend WP</button>
-                            </div>
-                        </div>
-                    </td>
-                    <td class="px-5 py-4 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                        ${courseBatchText}
-                    </td>
-                    <td class="px-5 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">${item.FEE_PERIOD || 'N/A'}</td>
-                    <td class="px-5 py-4">
-                        <span class="px-2.5 py-1 rounded-full border text-[10px] font-bold tracking-wide uppercase ${statusClass}">
-                            ${item.STATUS || 'UNKNOWN'}
-                        </span>
-                    </td>
-                    <td class="px-5 py-4 text-right text-sm font-black text-slate-800 dark:text-white">₹${item.AMOUNT_COLLECTED || 0}</td>
-                </tr>`;
-        });
-        
-        tbody.innerHTML = html;
+            // Premium Status Badge Resolution Rule
+            const activeStatus = item.STATUS || 'PAID';
+            const statusClass = activeStatus === 'PAID' 
+                ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400' 
+                : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400';
 
-        // ── DELEGATED EVENT HANDLER FOR RESEND BUTTONS ────────────────────
-        // Using event delegation instead of inline onclick so that:
-        //  a) apostrophes/quotes in field values never break handler strings
-        //  b) a single listener covers all dynamically rendered rows
-        // The handler is re-registered each render; the old one is discarded
-        // with the old tbody.innerHTML replacement above.
-        tbody.addEventListener('click', function handleResendClick(e) {
-            const btn = e.target.closest('.ledger-resend-btn');
-            if (!btn) return;
+            return `
+            <tr class="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
+                <td class="p-3 font-mono text-xs text-indigo-500 font-bold tracking-wide">${displayDate}</td>
+                <td class="p-3 font-mono text-xs text-indigo-500 font-bold tracking-wide">${item.TXN_ID || 'N/A'}</td>
+                <td class="p-3">
+                    <div class="text-xs font-bold text-slate-800 dark:text-slate-200">${item.STUDENT_NAME || 'N/A'}</div>
+                    <!-- CRITICAL REQUIREMENT PRESERVED: On-demand historical resend distribution utility links row -->
+                    <div class="flex items-center gap-2 mt-1 text-[10px] font-black tracking-wider uppercase select-none">
+                        <button type="button" class="text-indigo-500 hover:text-indigo-400 hover:underline transition-colors cursor-pointer" onclick="const s = window.MasterCandidateCache?.find(x => x.STUDENT_ID === '${item.STUDENT_ID}'); if(s) window.NotificationUtils.dispatchFeeNotification(s, {txnId: '${item.TXN_ID}', amount: '${item.AMOUNT_COLLECTED}', feePeriods: '${item.FEE_PERIOD}'}, true, false);">📧 Resend Mail</button>
+                        <span class="text-slate-700/60 dark:text-slate-600">|</span>
+                        <button type="button" class="text-emerald-500 hover:text-emerald-400 hover:underline transition-colors cursor-pointer" onclick="const s = window.MasterCandidateCache?.find(x => x.STUDENT_ID === '${item.STUDENT_ID}'); if(s) window.NotificationUtils.dispatchFeeNotification(s, {txnId: '${item.TXN_ID}', amount: '${item.AMOUNT_COLLECTED}', feePeriods: '${item.FEE_PERIOD}'}, false, true);">💬 Resend WP</button>
+                    </div>
+                </td>
+                <td class="p-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    ${courseBatchText}
+                </td>
+                <td class="p-3 text-xs font-bold text-slate-600 dark:text-slate-300">${item.FEE_PERIOD || 'N/A'}</td>
+                <td class="p-3 text-center align-middle">
+                    <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded ${statusClass} tracking-wider">${activeStatus}</span>
+                </td>
+                <td class="p-3 text-right text-xs font-black font-mono text-slate-800 dark:text-slate-100">₹ ${Number(item.AMOUNT_COLLECTED || 0).toLocaleString('en-IN')}.00</td>
+            </tr>
+        `}).join('');
 
-            const action     = btn.dataset.action;
-            const studentId  = btn.dataset.studentId;
-            const txnId      = btn.dataset.txnId;
-            const amount     = btn.dataset.amount;
-            const feePeriod  = btn.dataset.feePeriod;
-
-            // Look up the full candidate record from the live MasterCandidateCache
-            const student = (window.MasterCandidateCache || []).find(
-                function(x) { return x.STUDENT_ID === studentId; }
-            );
-
-            if (!student) {
-                if (window.UIUtils) {
-                    window.UIUtils.showToast(
-                        'Student record not found in local cache. Refresh the directory first.',
-                        'warning'
-                    );
-                }
-                return;
-            }
-
-            if (!window.NotificationUtils) {
-                if (window.UIUtils) {
-                    window.UIUtils.showToast('Notification engine not loaded.', 'error');
-                }
-                return;
-            }
-
-            const summaryData = {
-                txnId:      txnId,
-                amount:     amount,
-                feePeriods: feePeriod
-            };
-
-            // Route to the correct channel based on which button was clicked
-            if (action === 'email') {
-                window.NotificationUtils.dispatchFeeNotification(student, summaryData, true, false);
-            } else if (action === 'whatsapp') {
-                window.NotificationUtils.dispatchFeeNotification(student, summaryData, false, true);
-            }
-        }, { once: true });
-        // ── END DELEGATED EVENT HANDLER ───────────────────────────────────
+        // Render modern control action row elements toolbar panel
+        if (controlsContainer) {
+            controlsContainer.innerHTML = `
+            <div class="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/20 border-t border-slate-100 dark:border-slate-800/80 rounded-b-xl select-none text-xs">
+                <div class="font-semibold text-slate-500">
+                    Displaying Ledger Rows <span class="text-slate-800 dark:text-slate-200">${startIdx + 1}</span> to <span class="text-slate-800 dark:text-slate-200">${endIdx}</span> of <span class="text-slate-800 dark:text-slate-200">${totalItems}</span> statements
+                </div>
+                <div class="flex items-center gap-1">
+                    <button type="button" ${_ledgerCurrentPage === 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 font-bold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all" onclick="window.PaymentLedgerModule.goToPage(${_ledgerCurrentPage - 1});">
+                        Previous
+                    </button>
+                    <div class="px-3 font-bold text-slate-700 dark:text-slate-300">
+                        Page ${_ledgerCurrentPage} of ${totalPages}
+                    </div>
+                    <button type="button" ${_ledgerCurrentPage === totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 font-bold bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all" onclick="window.PaymentLedgerModule.goToPage(${_ledgerCurrentPage + 1});">
+                        Next
+                    </button>
+                </div>
+            </div>`;
+        }
     }
 
     // =========================================
@@ -643,6 +607,17 @@ window.PaymentLedgerModule = (function () {
         }
     }
 
+    function goToPage(page) {
+        const totalPages = Math.ceil(_ledgerFilteredPool.length / _ledgerRowsPerPage) || 1;
+        const safePage = Math.max(1, Math.min(page, totalPages));
+        if (safePage === _ledgerCurrentPage) return;
+        _ledgerCurrentPage = safePage;
+        renderPaginatedLedger();
+        
+        const tableEl = document.getElementById('ledgerGridBody');
+        if (tableEl) tableEl.closest('.overflow-x-auto')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
     // Clean Global Scoping Export Return Wrapper
     return {
         init: init,
@@ -650,7 +625,9 @@ window.PaymentLedgerModule = (function () {
         toggleFilters: toggleFilters,
         applyLedgerFilters: applyLedgerFilters,
         fetchAndApplyFilters: fetchAndApplyFilters,
-        exportToCSV: exportToCSV
+        exportToCSV: exportToCSV,
+        goToPage: goToPage,
+        renderPaginatedLedger: renderPaginatedLedger
     };
 
 })(); // End IIFE Wrapper

@@ -18,6 +18,14 @@ window.DirectoryViewerModule = (function () {
     let _directoryData = [];
     let _filteredData = [];
 
+    // ── Pagination State ──────────────────────────────────────────────────
+    // _dirFilteredPool: the live, search-reactive dataset slice source.
+    // Kept separate from _filteredData so the legacy exportToCsv and
+    // getRecordByIndex functions continue to operate against the full set.
+    let _dirCurrentPage   = 1;
+    const _dirRowsPerPage = 8;
+    let _dirFilteredPool  = []; // Repopulated by initializeDirectoryPool() and applyDirectoryFilters()
+
     /** Schema mapping — matches Google Sheet column headers exactly */
     const SCHEMA = [
         'STUDENT_ID', 'RL_NO', 'SESSION', 'DATE_OF_ADMISSION', 'ENROLLED_COURSE', 'CLASS_BATCH_DAYS',
@@ -201,28 +209,24 @@ window.DirectoryViewerModule = (function () {
                 <!-- Data Table Container -->
                 <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse whitespace-nowrap min-w-[900px]">
+                        <table class="w-full text-left border-collapse table-fixed">
                             <thead>
-                                <tr class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    <th class="px-6 py-4">Student ID</th>
-                                    <th class="px-6 py-4">Roll No</th>
-                                    <th class="px-6 py-4">Candidate Name</th>
-                                    <th class="px-6 py-4">Enrolled Class</th>
-                                    <th class="px-6 py-4">Mobile</th>
-                                    <th class="px-6 py-4 text-right">Actions</th>
+                                <tr class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th class="w-[15%] px-4 py-3">Student ID</th>
+                                    <th class="w-[9%]  px-4 py-3">Roll No</th>
+                                    <th class="w-[22%] px-4 py-3">Candidate Name</th>
+                                    <th class="w-[24%] px-4 py-3">Enrolled Class</th>
+                                    <th class="w-[16%] px-4 py-3">Mobile</th>
+                                    <th class="w-[14%] px-4 py-3 text-right pr-5">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="dir_table_body" class="divide-y divide-slate-100 dark:divide-slate-800">
-                                <!-- Loading Skeleton -->
-                                <tr>
-                                    <td colspan="6" class="px-6 py-16 text-center text-slate-500">
-                                        <svg class="animate-spin h-8 w-8 mx-auto text-brand-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                        <p class="font-medium animate-pulse">Fetching records from cloud...</p>
-                                    </td>
-                                </tr>
+                                <!-- Skeleton rows injected here by renderDirectoryTableSkeleton() -->
                             </tbody>
                         </table>
                     </div>
+                    <!-- Pagination controls injected here by renderPaginatedDirectory() (Phase 3) -->
+                    <div id="directory_pagination_controls"></div>
                 </div>
             </div>
 
@@ -286,7 +290,13 @@ window.DirectoryViewerModule = (function () {
         });
 
         window.currentFilteredDataset = [..._filteredData];
-        renderTableBody();
+
+        // ── PAGINATION INTEGRATION: Feed the filtered result into the pool
+        // and always reset to page 1 on any keystroke/filter change so the
+        // user is never left staring at an out-of-bounds empty page.
+        _dirFilteredPool  = [..._filteredData];
+        _dirCurrentPage   = 1;
+        renderPaginatedDirectory();
     }
 
     function attachSearchListener() {
@@ -320,6 +330,9 @@ window.DirectoryViewerModule = (function () {
 
     async function fetchDirectory() {
         try {
+            // ⚡ SHIMMER SKELETON: Fire visual placeholders immediately before network I/O
+            renderDirectoryTableSkeleton();
+
             const token = window.SystemConfig ? localStorage.getItem(window.SystemConfig.AUTH_KEY) : '';
             const res = await window.UIUtils.fetchFromEngine({
                 action: "FETCH_DIRECTORY",
@@ -329,9 +342,12 @@ window.DirectoryViewerModule = (function () {
 
             if (res && res.status === "success" && Array.isArray(res.data)) {
                 _directoryData = res.data;
-                _filteredData = [..._directoryData];
+                _filteredData  = [..._directoryData];
                 window.currentFilteredDataset = [..._filteredData];
-                renderTableBody();
+
+                // ⏳ PRIORITY BOOT: Sort chronologically then render page 1
+                initializeDirectoryPool(_directoryData);
+
                 if (window.UIUtils) window.UIUtils.showToast(`Loaded ${_directoryData.length} records.`, "success");
             } else {
                 throw new Error(res.message || "Invalid payload format from server.");
@@ -340,7 +356,47 @@ window.DirectoryViewerModule = (function () {
             console.error("Fetch Directory Error:", err);
             if (window.UIUtils) window.UIUtils.showToast("Failed to load directory. " + err.message, "error");
             document.getElementById('dir_table_body').innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-red-500 font-bold">Error loading directory.</td></tr>`;
+            const ctrl = document.getElementById('directory_pagination_controls');
+            if (ctrl) ctrl.innerHTML = '';
         }
+    }
+
+    // =========================================
+    // 💠 SHIMMER SKELETON LOADER
+    // =========================================
+
+    /**
+     * renderDirectoryTableSkeleton
+     * -------------------------------------------------------------------
+     * Injects 6 animate-pulse shimmer rows into dir_table_body.
+     * Called immediately before every async cloud fetch so the UI never
+     * shows a blank state during network I/O.
+     * Columns match the table-fixed widths defined in buildShellHTML().
+     */
+    function renderDirectoryTableSkeleton() {
+        const tbody = document.getElementById('dir_table_body');
+        if (!tbody) return;
+
+        let rows = '';
+        for (let i = 0; i < 7; i++) {
+            rows += `
+            <tr class="animate-pulse border-b border-slate-100 dark:border-slate-800/60">
+                <td class="px-4 py-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded-md w-24"></div></td>
+                <td class="px-4 py-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded-md w-10"></div></td>
+                <td class="px-4 py-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded-md w-36"></div></td>
+                <td class="px-4 py-3">
+                    <div class="space-y-1.5">
+                        <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded-md w-full"></div>
+                        <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded-md w-2/3"></div>
+                    </div>
+                </td>
+                <td class="px-4 py-3"><div class="h-4 bg-slate-200 dark:bg-slate-700 rounded-md w-28"></div></td>
+                <td class="px-4 py-3 text-right pr-5">
+                    <div class="h-6 bg-slate-200 dark:bg-slate-700 rounded-md w-20 inline-block"></div>
+                </td>
+            </tr>`;
+        }
+        tbody.innerHTML = rows;
     }
 
     // =========================================
@@ -362,48 +418,56 @@ window.DirectoryViewerModule = (function () {
 
             html += `
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group">
-                    <td class="px-6 py-4">
-                        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <td class="px-4 py-3 align-middle">
+                        <span class="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm truncate block max-w-full">
                             ${row.STUDENT_ID || 'N/A'}
                         </span>
                     </td>
-                    <td class="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">
+                    <td class="px-4 py-3 align-middle text-sm font-medium text-slate-600 dark:text-slate-300">
                         ${row.RL_NO || 'N/A'}
                     </td>
-                    <td class="px-6 py-4">
-                        <span class="font-bold text-slate-800 dark:text-white">${row.STUDENT_NAME || 'N/A'}</span>
+                    <td class="px-4 py-3 align-middle">
+                        <span class="font-bold text-slate-800 dark:text-white block truncate">${row.STUDENT_NAME || 'N/A'}</span>
                     </td>
-                    <td class="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">${row.ENROLLED_COURSE || 'N/A'}</td>
-                    <td class="px-6 py-4 text-sm font-medium text-slate-600 dark:text-slate-300">${row.STUDENT_MOBILE || 'N/A'}</td>
-                    <td class="px-6 py-4 text-right">
-                        <div class="flex items-center justify-end gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <!-- ENROLLED_COURSE: line-clamp-2 prevents long course names from blowing column width -->
+                    <td class="px-4 py-3 align-middle">
+                        <div class="text-xs font-semibold text-slate-600 dark:text-slate-300 break-words line-clamp-2 leading-snug" title="${row.ENROLLED_COURSE || ''}">
+                            ${row.ENROLLED_COURSE || 'N/A'}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 align-middle text-sm font-medium text-slate-600 dark:text-slate-300">
+                        ${row.STUDENT_MOBILE || 'N/A'}
+                    </td>
+                    <!-- Actions: whitespace-nowrap keeps icon buttons from wrapping to a second line -->
+                    <td class="px-4 py-3 align-middle text-right pr-5 whitespace-nowrap">
+                        <div class="flex items-center justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                             <!-- View Profile -->
-                            <button onclick="window.DirectoryViewerModule.viewRecord(${absoluteIndex})" class="p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30 rounded-lg transition-colors" title="View Profile">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                            <button onclick="window.DirectoryViewerModule.viewRecord(${absoluteIndex})" class="p-1.5 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30 rounded-lg transition-colors" title="View Profile">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                             </button>
                             <!-- Edit Record -->
-                            <button onclick="window.DirectoryViewerModule.editRecord(${absoluteIndex})" class="p-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors" title="Edit Record">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            <button onclick="window.DirectoryViewerModule.editRecord(${absoluteIndex})" class="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors" title="Edit Record">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                             </button>
                             <!-- Reprint PDF -->
-                            <button onclick="window.DirectoryViewerModule.printPDF(${absoluteIndex})" class="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Reprint PDF">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                            <button onclick="window.DirectoryViewerModule.printPDF(${absoluteIndex})" class="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Reprint PDF">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
                             </button>
                             <!-- Send Admission Email -->
-                            <button onclick="(function(idx){var rec=window.DirectoryViewerModule.getRecordByIndex(idx);if(!rec)return;if(window.NotificationUtils){window.NotificationUtils.sendAdmissionEmail(rec);}else{window.UIUtils&&window.UIUtils.showToast('Notification module not loaded.','error');}})(${absoluteIndex})" class="p-2 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/30 rounded-lg transition-colors" title="Send Admission Email">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            <button onclick="(function(idx){var rec=window.DirectoryViewerModule.getRecordByIndex(idx);if(!rec)return;if(window.NotificationUtils){window.NotificationUtils.sendAdmissionEmail(rec);}else{window.UIUtils&&window.UIUtils.showToast('Notification module not loaded.','error');}})(${absoluteIndex})" class="p-1.5 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/30 rounded-lg transition-colors" title="Send Admission Email">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                             </button>
-                            <!-- Send Admission WhatsApp -->
-                            <button onclick="(function(idx){var rec=window.DirectoryViewerModule.getRecordByIndex(idx);if(!rec)return;if(window.NotificationUtils){window.NotificationUtils.sendAdmissionWhatsApp(rec);}else{window.UIUtils&&window.UIUtils.showToast('Notification module not loaded.','error');}})(${absoluteIndex})" class="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors" title="Send WhatsApp Message">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                            <!-- Send WhatsApp -->
+                            <button onclick="(function(idx){var rec=window.DirectoryViewerModule.getRecordByIndex(idx);if(!rec)return;if(window.NotificationUtils){window.NotificationUtils.sendAdmissionWhatsApp(rec);}else{window.UIUtils&&window.UIUtils.showToast('Notification module not loaded.','error');}})(${absoluteIndex})" class="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors" title="Send WhatsApp Message">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
                             </button>
-                            <!-- 💲 Pay Fees — Cross-Module Bridge to Fee Collector (Safety-Guarded) -->
-                            <button onclick="(async function(idx){var rec=window.DirectoryViewerModule.getRecordByIndex(idx);if(!rec){return;}if(window.PaymentCollectorModule&&window.PaymentCollectorModule.openCartForCandidate){window.PaymentCollectorModule.openCartForCandidate(rec);}else{if(window.AppCore){await window.AppCore.navigateTo('paymentCollector');}if(window.PaymentCollectorModule&&window.PaymentCollectorModule.openCartForCandidate){window.PaymentCollectorModule.openCartForCandidate(rec);}else{window.UIUtils&&window.UIUtils.showToast('Fee Collector module failed to load.','error');}}})(${absoluteIndex})" class="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="💲 Pay Fees">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            <!-- Pay Fees -->
+                            <button onclick="(async function(idx){var rec=window.DirectoryViewerModule.getRecordByIndex(idx);if(!rec){return;}if(window.PaymentCollectorModule&&window.PaymentCollectorModule.openCartForCandidate){window.PaymentCollectorModule.openCartForCandidate(rec);}else{if(window.AppCore){await window.AppCore.navigateTo('paymentCollector');}if(window.PaymentCollectorModule&&window.PaymentCollectorModule.openCartForCandidate){window.PaymentCollectorModule.openCartForCandidate(rec);}else{window.UIUtils&&window.UIUtils.showToast('Fee Collector module failed to load.','error');}}})(${absoluteIndex})" class="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Pay Fees">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                             </button>
-                            <!-- Delete -->
-                            <button onclick="window.DirectoryViewerModule.deleteRecord('${row.STUDENT_ID}')" class="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Delete Record">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            <!-- Soft Delete -->
+                            <button onclick="window.DirectoryViewerModule.deleteRecord('${row.STUDENT_ID}')" class="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Archive Record">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
                         </div>
                     </td>
@@ -412,6 +476,186 @@ window.DirectoryViewerModule = (function () {
         });
 
         tbody.innerHTML = html;
+    }
+
+    // =========================================
+    // 📅 PAGINATION ENGINE (Phase 3)
+    // =========================================
+
+    /**
+     * initializeDirectoryPool
+     * -------------------------------------------------------------------
+     * Priority Boot Hook. Accepts the raw server payload, sorts it in
+     * strict descending chronological order by DATE_OF_ADMISSION so the
+     * most recent enrolments always surface on Page 1, then commits the
+     * result to the live pool and triggers the first paginated render.
+     *
+     * Called once by fetchDirectory() after a successful cloud response.
+     * After that, applyDirectoryFilters() owns all pool updates.
+     *
+     * Sort Strategy:
+     *   DATE_OF_ADMISSION is a date string from the spreadsheet.
+     *   new Date() parsing covers ISO strings and locale date formats.
+     *   Records with absent/invalid dates fall to the bottom (new Date(0)).
+     *
+     * @param {Array<Object>} rawCandidatesArray — Direct server payload
+     */
+    function initializeDirectoryPool(rawCandidatesArray) {
+        // Descending chronological sort — newest admissions first
+        _dirFilteredPool = [...rawCandidatesArray].sort((a, b) => {
+            const dateB = b.DATE_OF_ADMISSION ? new Date(b.DATE_OF_ADMISSION) : new Date(0);
+            const dateA = a.DATE_OF_ADMISSION ? new Date(a.DATE_OF_ADMISSION) : new Date(0);
+            return dateB - dateA;
+        });
+
+        // Sync _filteredData reference so CSV export and getRecordByIndex
+        // still return the full chronologically-ordered set
+        _filteredData = [..._dirFilteredPool];
+        window.currentFilteredDataset = [..._filteredData];
+
+        _dirCurrentPage = 1;
+        renderPaginatedDirectory();
+    }
+
+    /**
+     * renderPaginatedDirectory
+     * -------------------------------------------------------------------
+     * Slice engine. Reads _dirFilteredPool and _dirCurrentPage, extracts
+     * the correct 8-row window, calls renderTableBody() on the slice,
+     * then injects the premium navigation toolbar into
+     * #directory_pagination_controls.
+     *
+     * Page boundary guards prevent _dirCurrentPage from ever going
+     * out-of-range even when the pool shrinks due to search filtering.
+     *
+     * Empty state: renders a "no results" cell and clears the control bar.
+     */
+    function renderPaginatedDirectory() {
+        const tableBody        = document.getElementById('dir_table_body');
+        const controlsContainer = document.getElementById('directory_pagination_controls');
+        if (!tableBody) return;
+
+        const totalItems = _dirFilteredPool.length;
+        const totalPages = Math.ceil(totalItems / _dirRowsPerPage) || 1;
+
+        // ── Boundary Guards ──────────────────────────────────────────
+        if (_dirCurrentPage > totalPages) _dirCurrentPage = totalPages;
+        if (_dirCurrentPage < 1)          _dirCurrentPage = 1;
+
+        const startIdx      = (_dirCurrentPage - 1) * _dirRowsPerPage;
+        const endIdx        = Math.min(startIdx + _dirRowsPerPage, totalItems);
+        const displayedItems = _dirFilteredPool.slice(startIdx, endIdx);
+
+        // ── Empty State ────────────────────────────────────────────
+        if (displayedItems.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center"><div class="flex flex-col items-center gap-3 text-slate-400"><svg class="w-10 h-10 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span class="text-xs font-bold tracking-wide uppercase">No active candidates match this filter criteria.</span></div></td></tr>`;
+            if (controlsContainer) controlsContainer.innerHTML = '';
+            return;
+        }
+
+        // ── Render visible slice into the table body ──────────────────────
+        // Temporarily swap _filteredData with the page slice so the
+        // existing renderTableBody() row builder works without modification.
+        const _savedFiltered = _filteredData;
+        _filteredData = displayedItems;
+        renderTableBody();
+        _filteredData = _savedFiltered; // Restore full set immediately after
+
+        // ── Pagination Control Toolbar ──────────────────────────────
+        if (controlsContainer) {
+            controlsContainer.innerHTML = buildPaginationControlsHTML(
+                startIdx, endIdx, totalItems, totalPages
+            );
+        }
+    }
+
+    /**
+     * buildPaginationControlsHTML
+     * -------------------------------------------------------------------
+     * Returns the premium pagination control bar markup.
+     * Called exclusively by renderPaginatedDirectory().
+     * Page navigation uses window.DirectoryViewerModule.goToPage() so the
+     * inline onclick handlers can safely cross the IIFE boundary.
+     *
+     * Button States:
+     *   • Previous disabled when _dirCurrentPage === 1
+     *   • Next disabled when _dirCurrentPage === totalPages
+     *   • active:scale-95 gives a tactile press feel
+     *
+     * @returns {string} HTML string for direct innerHTML injection
+     */
+    function buildPaginationControlsHTML(startIdx, endIdx, totalItems, totalPages) {
+        const isFirst = _dirCurrentPage === 1;
+        const isLast  = _dirCurrentPage === totalPages;
+
+        // Generate numbered page buttons (show up to 5 around current page)
+        let pageButtons = '';
+        const rangeStart = Math.max(1, _dirCurrentPage - 2);
+        const rangeEnd   = Math.min(totalPages, _dirCurrentPage + 2);
+
+        if (rangeStart > 1) {
+            pageButtons += `<button type="button" onclick="window.DirectoryViewerModule.goToPage(1)" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">1</button>`;
+            if (rangeStart > 2) pageButtons += `<span class="px-1 text-slate-400 text-xs font-bold select-none">…</span>`;
+        }
+
+        for (let p = rangeStart; p <= rangeEnd; p++) {
+            const isActive = p === _dirCurrentPage;
+            pageButtons += `<button type="button" onclick="window.DirectoryViewerModule.goToPage(${p})"
+                class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95
+                ${ isActive
+                    ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/30'
+                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }">${p}</button>`;
+        }
+
+        if (rangeEnd < totalPages) {
+            if (rangeEnd < totalPages - 1) pageButtons += `<span class="px-1 text-slate-400 text-xs font-bold select-none">…</span>`;
+            pageButtons += `<button type="button" onclick="window.DirectoryViewerModule.goToPage(${totalPages})" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">${totalPages}</button>`;
+        }
+
+        return `
+        <div class="flex items-center justify-between px-5 py-3 bg-slate-50 dark:bg-slate-900/40 border-t border-slate-100 dark:border-slate-800 rounded-b-2xl select-none">
+
+            <!-- Left: Record count summary -->
+            <div class="text-xs font-semibold text-slate-400 dark:text-slate-500 tracking-wide">
+                Showing
+                <span class="text-slate-700 dark:text-slate-200 font-bold">${startIdx + 1}</span>
+                –
+                <span class="text-slate-700 dark:text-slate-200 font-bold">${endIdx}</span>
+                of
+                <span class="text-brand-600 dark:text-brand-400 font-bold">${totalItems}</span>
+                candidates
+            </div>
+
+            <!-- Centre: Numbered page buttons -->
+            <div class="flex items-center gap-0.5">
+                <!-- Previous -->
+                <button type="button"
+                    ${ isFirst ? 'disabled' : '' }
+                    onclick="window.DirectoryViewerModule.goToPage(${_dirCurrentPage - 1})"
+                    class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-35 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all mr-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+                    Prev
+                </button>
+
+                <!-- Numbered pages -->
+                <div class="flex items-center gap-0.5">${pageButtons}</div>
+
+                <!-- Next -->
+                <button type="button"
+                    ${ isLast ? 'disabled' : '' }
+                    onclick="window.DirectoryViewerModule.goToPage(${_dirCurrentPage + 1})"
+                    class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-35 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all ml-1">
+                    Next
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                </button>
+            </div>
+
+            <!-- Right: Rows-per-page indicator (static, visual only) -->
+            <div class="text-xs font-semibold text-slate-400 dark:text-slate-500 tracking-wide hidden sm:block">
+                ${_dirRowsPerPage} rows / page
+            </div>
+        </div>`;
     }
 
     // =========================================
@@ -1204,6 +1448,29 @@ window.DirectoryViewerModule = (function () {
         return _directoryData[index] || null;
     }
 
+    /**
+     * goToPage — Public pagination bridge
+     * -------------------------------------------------------------------
+     * Called by the inline onclick handlers inside buildPaginationControlsHTML.
+     * Inline handlers run in the global window scope and cannot directly reach
+     * the IIFE-private _dirCurrentPage variable, so this public method acts as
+     * the boundary crossing point.
+     *
+     * Guards against invalid page numbers before delegating to the renderer.
+     *
+     * @param {number} page — Target page number (1-indexed)
+     */
+    function goToPage(page) {
+        const totalPages = Math.ceil(_dirFilteredPool.length / _dirRowsPerPage) || 1;
+        const safePage = Math.max(1, Math.min(page, totalPages));
+        if (safePage === _dirCurrentPage) return; // No-op if already on this page
+        _dirCurrentPage = safePage;
+        renderPaginatedDirectory();
+        // Scroll the table into view smoothly so the user sees the new rows
+        const tableEl = document.getElementById('dir_table_body');
+        if (tableEl) tableEl.closest('.overflow-x-auto')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
     return {
         mount,
         viewRecord,
@@ -1214,7 +1481,9 @@ window.DirectoryViewerModule = (function () {
         processEditAttachment,
         getBase64FromDriveUrl,
         exportToCsv,
-        getRecordByIndex
+        getRecordByIndex,
+        goToPage            // Phase 3: Pagination navigation bridge
     };
 
 })();
+

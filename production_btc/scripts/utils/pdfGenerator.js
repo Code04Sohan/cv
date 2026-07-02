@@ -146,7 +146,7 @@ window.PDFGenerator = (function () {
         doc.setFontSize(8.5);
         doc.text("Address: Jagriti More, Maynaguri, Jalpaiguri, West Bengal, Pin-735224", headerCenterX, currentY + 16, { align: 'center' });
         doc.text("Email: bablayogatrainingcenter@gmail.com", headerCenterX, currentY + 20, { align: 'center' });
-        doc.text("Cont. 7076280550 (Call/Wp), 8158027894 (Call)", headerCenterX, currentY + 24, { align: 'center' });
+        doc.text("Cont. 7076280550 (Call/Wp), 8597125683 (Call)", headerCenterX, currentY + 24, { align: 'center' });
 
         // Candidate Photo: Fixed area in top-right corner
         const photoW = 30;
@@ -365,7 +365,13 @@ window.PDFGenerator = (function () {
         };
 
         // Generate QR Code securely
-        const qrDataString = `Name: ${data.STUDENT_NAME || 'N/A'}\nRoll: ${data.RL_NO || 'N/A'}\nSession: ${data.SESSION || 'N/A'}\nMobile: ${data.STUDENT_MOBILE || 'N/A'}`;
+        const qrDataString = `Name: ${data.STUDENT_NAME || 'N/A'}\n` +
+            `Roll: ${data.RL_NO || 'N/A'}\n` +
+            `Session: ${data.SESSION || 'N/A'}\n` +
+            `Mobile: ${data.STUDENT_MOBILE || 'N/A'}\n` +
+            `Home Address: ${data.HOME_ADDRESS || 'N/A'}\n` +
+            `Father Name: ${data.FATHER_NAME || 'N/A'}\n` +
+            `Guardian Name: ${data.GUARDIAN_NAME || 'N/A'}`;
         if (typeof window.QRCode !== 'undefined') {
             const qrContainer = document.createElement("div");
             qrContainer.style.position = "absolute";
