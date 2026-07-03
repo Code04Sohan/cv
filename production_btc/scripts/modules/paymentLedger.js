@@ -217,6 +217,7 @@ window.PaymentLedgerModule = (function () {
                                     <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Fee Period</th>
                                     <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Status</th>
                                     <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">Amount</th>
+                                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="ledgerGridBody" class="divide-y divide-slate-100 dark:divide-slate-700/50">
@@ -468,7 +469,7 @@ window.PaymentLedgerModule = (function () {
         const displayedItems = _ledgerFilteredPool.slice(startIdx, endIdx);
 
         if (displayedItems.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-xs font-bold text-slate-400 tracking-wide uppercase">No financial entries match your lookup preferences.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-xs font-bold text-slate-400 tracking-wide uppercase">No financial entries match your lookup preferences.</td></tr>`;
             if (controlsContainer) controlsContainer.innerHTML = '';
             return;
         }
@@ -504,18 +505,19 @@ window.PaymentLedgerModule = (function () {
                 ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400' 
                 : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400';
 
+            // Safely escape all data values that will appear in inline onclick attributes
+            const safeStudentId  = escAttr(item.STUDENT_ID);
+            const safeTxnId      = escAttr(item.TXN_ID);
+            const safeAmount     = escAttr(item.AMOUNT_COLLECTED);
+            const safeFeePeriod  = escAttr(item.FEE_PERIOD);
+
             return `
             <tr class="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
                 <td class="p-3 font-mono text-xs text-indigo-500 font-bold tracking-wide">${displayDate}</td>
                 <td class="p-3 font-mono text-xs text-indigo-500 font-bold tracking-wide">${item.TXN_ID || 'N/A'}</td>
                 <td class="p-3">
                     <div class="text-xs font-bold text-slate-800 dark:text-slate-200">${item.STUDENT_NAME || 'N/A'}</div>
-                    <!-- CRITICAL REQUIREMENT PRESERVED: On-demand historical resend distribution utility links row -->
-                    <div class="flex items-center gap-2 mt-1 text-[10px] font-black tracking-wider uppercase select-none">
-                        <button type="button" class="text-indigo-500 hover:text-indigo-400 hover:underline transition-colors cursor-pointer" onclick="const s = window.MasterCandidateCache?.find(x => x.STUDENT_ID === '${item.STUDENT_ID}'); if(s) window.NotificationUtils.dispatchFeeNotification(s, {txnId: '${item.TXN_ID}', amount: '${item.AMOUNT_COLLECTED}', feePeriods: '${item.FEE_PERIOD}'}, true, false);">📧 Resend Mail</button>
-                        <span class="text-slate-700/60 dark:text-slate-600">|</span>
-                        <button type="button" class="text-emerald-500 hover:text-emerald-400 hover:underline transition-colors cursor-pointer" onclick="const s = window.MasterCandidateCache?.find(x => x.STUDENT_ID === '${item.STUDENT_ID}'); if(s) window.NotificationUtils.dispatchFeeNotification(s, {txnId: '${item.TXN_ID}', amount: '${item.AMOUNT_COLLECTED}', feePeriods: '${item.FEE_PERIOD}'}, false, true);">💬 Resend WP</button>
-                    </div>
+                    <div class="text-[10px] text-slate-400 font-medium mt-0.5">${item.STUDENT_ID || ''}</div>
                 </td>
                 <td class="p-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     ${courseBatchText}
@@ -524,7 +526,73 @@ window.PaymentLedgerModule = (function () {
                 <td class="p-3 text-center align-middle">
                     <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded ${statusClass} tracking-wider">${activeStatus}</span>
                 </td>
-                <td class="p-3 text-right text-xs font-black font-mono text-slate-800 dark:text-slate-100">₹ ${Number(item.AMOUNT_COLLECTED || 0).toLocaleString('en-IN')}.00</td>
+                <td class="p-3 text-right text-xs font-black font-mono text-slate-800 dark:text-slate-100">&#x20B9; ${Number(item.AMOUNT_COLLECTED || 0).toLocaleString('en-IN')}.00</td>
+
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- ACTIONS COLUMN: Download · Email · WhatsApp             -->
+                <!-- escAttr() guarantees all row data is injection-safe     -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <td class="p-3 text-center align-middle">
+                    <div class="flex items-center justify-center gap-1.5">
+
+                        <!-- 📥 LOCAL PDF DOWNLOAD -->
+                        <button
+                            type="button"
+                            title="Download PDF Receipt"
+                            class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-900 hover:bg-sky-100 dark:hover:bg-sky-900/30 text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 border border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-700 transition-all duration-150 active:scale-90 shadow-sm"
+                            onclick="(function(){
+                                const s = (window.MasterCandidateCache || []).find(function(x){ return x.STUDENT_ID === '${safeStudentId}'; });
+                                const candidate = s || { STUDENT_ID: '${safeStudentId}', STUDENT_NAME: '${escAttr(item.STUDENT_NAME)}', RL_NO: '${escAttr(item.RL_NO)}', ENROLLED_COURSE: '${escAttr(item._course)}' };
+                                if (window.FeePDFGeneratorModule && window.FeePDFGeneratorModule.downloadFeePDF) {
+                                    window.FeePDFGeneratorModule.downloadFeePDF(candidate, { txnId: '${safeTxnId}', amount: '${safeAmount}', feePeriods: '${safeFeePeriod}' });
+                                } else if (window.UIUtils) {
+                                    window.UIUtils.showToast('PDF module not loaded.', 'error');
+                                }
+                            })()">
+                            <!-- Download cloud-arrow-down SVG icon -->
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                        </button>
+
+                        <!-- 📧 EMAIL RESEND -->
+                        <button
+                            type="button"
+                            title="Resend Receipt by Email"
+                            class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-900 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all duration-150 active:scale-90 shadow-sm"
+                            onclick="(function(){
+                                const s = (window.MasterCandidateCache || []).find(function(x){ return x.STUDENT_ID === '${safeStudentId}'; });
+                                if (!s) { if(window.UIUtils) window.UIUtils.showToast('Student record not in cache.', 'error'); return; }
+                                if (window.NotificationUtils) {
+                                    window.NotificationUtils.dispatchFeeNotification(s, { txnId: '${safeTxnId}', amount: '${safeAmount}', feePeriods: '${safeFeePeriod}' }, true, false);
+                                }
+                            })()">
+                            <!-- Envelope SVG icon -->
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                        </button>
+
+                        <!-- 💬 WHATSAPP REDIRECT -->
+                        <button
+                            type="button"
+                            title="Send Receipt via WhatsApp"
+                            class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-900 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all duration-150 active:scale-90 shadow-sm"
+                            onclick="(function(){
+                                const s = (window.MasterCandidateCache || []).find(function(x){ return x.STUDENT_ID === '${safeStudentId}'; });
+                                if (!s) { if(window.UIUtils) window.UIUtils.showToast('Student record not in cache.', 'error'); return; }
+                                if (window.NotificationUtils) {
+                                    window.NotificationUtils.dispatchFeeNotification(s, { txnId: '${safeTxnId}', amount: '${safeAmount}', feePeriods: '${safeFeePeriod}' }, false, true);
+                                }
+                            })()">
+                            <!-- Chat-bubble SVG icon (WhatsApp style) -->
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                            </svg>
+                        </button>
+
+                    </div>
+                </td>
             </tr>
         `}).join('');
 
