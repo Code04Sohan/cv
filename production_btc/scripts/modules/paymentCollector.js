@@ -581,6 +581,8 @@ window.PaymentCollectorModule = (function () {
             }
             if (card) {
                 card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 cursor-pointer hover:border-brand-400 dark:hover:border-brand-500 transition-all duration-200 select-none group';
+                var badge = card.querySelector('.advance-badge');
+                if (badge) badge.remove();
             }
         }
     }
@@ -805,6 +807,10 @@ window.PaymentCollectorModule = (function () {
      * @param {number} year - The calendar year for the current grid
      */
     function lockPaidMonths(paidMonthsMap, year) {
+        var now = new Date();
+        var currentYear = now.getFullYear();
+        var currentMonth = now.getMonth();
+
         for (var i = 0; i < 12; i++) {
             // FIX: Use padded month lookup to align with database standard
             var paddedMonth = String(i + 1).padStart(2, '0');
@@ -818,8 +824,18 @@ window.PaymentCollectorModule = (function () {
                     cb.checked = true;
                     cb.disabled = true;
                 }
+                
+                var isAdvance = (year > currentYear) || (year === currentYear && i > currentMonth);
+
                 if (card) {
-                    card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-emerald-400 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 cursor-not-allowed transition-all duration-200 select-none group opacity-90';
+                    if (isAdvance) {
+                        card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-teal-400 dark:border-teal-500 bg-teal-50 dark:bg-teal-900/20 cursor-not-allowed transition-all duration-200 select-none group opacity-90';
+                        if (!card.querySelector('.advance-badge')) {
+                            card.insertAdjacentHTML('beforeend', '<span class="advance-badge absolute top-1 right-2 text-[8px] font-black uppercase tracking-wider text-teal-600 dark:text-teal-400 bg-teal-100 dark:bg-teal-900/50 px-1.5 py-0.5 rounded-sm">Prepaid</span>');
+                        }
+                    } else {
+                        card.className = 'relative flex items-center gap-3 p-3.5 rounded-xl border-2 border-emerald-400 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 cursor-not-allowed transition-all duration-200 select-none group opacity-90';
+                    }
                 }
             }
         }
@@ -845,23 +861,45 @@ window.PaymentCollectorModule = (function () {
     function computeDueAnalysis(paidMonthsMap, admMonth, admYear, calYear, endMonth, prevYear) {
         var expectedMonths = 0;
         var paidMonths = 0;
+        var advancePaidMonths = 0;
         var unpaidPeriods = [];
         var paidPeriods = [];
 
+        var now = new Date();
+        var currentCalYear = now.getFullYear();
+        var currentCalMonth = now.getMonth();
+
+        // Dynamically evaluate Advance Payments from all fetched logs
+        for (var key in paidMonthsMap) {
+            if (paidMonthsMap.hasOwnProperty(key) && paidMonthsMap[key] === true) {
+                var parts = key.split('-');
+                if (parts.length === 2) {
+                    var y = parseInt(parts[0], 10);
+                    var m = parseInt(parts[1], 10) - 1;
+                    if (y > currentCalYear || (y === currentCalYear && m > currentCalMonth)) {
+                        advancePaidMonths++;
+                    }
+                }
+            }
+        }
+
         var startMonthThisYear = (admYear === calYear) ? admMonth : 0;
         for (var m = startMonthThisYear; m <= endMonth; m++) {
-            expectedMonths++;
+            var isAdvance = (calYear > currentCalYear) || (calYear === currentCalYear && m > currentCalMonth);
             
             // FIX: Separate the DB lookup key from the UI display text
             var paddedMonth = String(m + 1).padStart(2, '0');
             var lookupKey = calYear + '-' + paddedMonth;
             var displayKey = MONTH_NAMES[m] + ' ' + calYear;
 
-            if (paidMonthsMap[lookupKey] === true) {
-                paidMonths++;
-                paidPeriods.push(displayKey);
-            } else {
-                unpaidPeriods.push(displayKey);
+            if (!isAdvance) {
+                expectedMonths++;
+                if (paidMonthsMap[lookupKey] === true) {
+                    paidMonths++;
+                    paidPeriods.push(displayKey);
+                } else {
+                    unpaidPeriods.push(displayKey);
+                }
             }
         }
 
@@ -889,6 +927,7 @@ window.PaymentCollectorModule = (function () {
         return {
             expectedMonths: expectedMonths,
             paidMonths: paidMonths,
+            advancePaidMonths: advancePaidMonths,
             dueMonths: dueMonths,
             dueAmount: dueAmount,
             unpaidPeriods: unpaidPeriods,
@@ -934,10 +973,14 @@ window.PaymentCollectorModule = (function () {
                 <span class="text-[10px] font-bold text-slate-400">Analysis Complete</span>
             </div>
             
-            <div class="grid grid-cols-3 gap-2 mt-2">
+            <div class="grid grid-cols-4 gap-2 mt-2">
                 <div class="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center shadow-sm">
                     <span class="block text-[9px] font-bold text-slate-400 uppercase">Paid Logs</span>
                     <span class="block text-sm font-black text-emerald-600 dark:text-emerald-400">${analysis.paidMonths}</span>
+                </div>
+                <div class="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center shadow-sm">
+                    <span class="block text-[9px] font-bold text-slate-400 uppercase">Advance Paid</span>
+                    <span class="block text-sm font-black text-teal-500 dark:text-teal-400">${analysis.advancePaidMonths || 0}</span>
                 </div>
                 <div class="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-center shadow-sm">
                     <span class="block text-[9px] font-bold text-slate-400 uppercase">Pending</span>

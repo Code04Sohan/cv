@@ -348,14 +348,16 @@ function handleFetchMonthlyLedger(requestPayload) {
  *   into the designated IS_DELETED column cell, archiving the record in-place.
  *
  * Execution Pipeline:
- *   1. Resolve the IS_DELETED column index dynamically from the live header row.
- *      This makes the engine immune to future column reordering.
+ *   1. Resolve the IS_DELETED column index dynamically from the live header row
+ *      (single-row fetch — no full-sheet RAM load).
  *   2. Scan Column A (STUDENT_ID) for an exact match via TextFinder.
+ *      Column A is strictly STUDENT_ID; scoping the search prevents false
+ *      matches in other columns and eliminates the full getDataRange() pull.
  *   3. Guard: reject if student is already soft-deleted (idempotent safety).
  *   4. Guard: reject if IS_DELETED column does not exist in the sheet schema
  *      (prevents silent data writes to the wrong cell).
- *   5. Write boolean TRUE to the IS_DELETED cell via a single targeted setValues()
- *      call — minimum surface area, maximum write speed.
+ *   5. Write boolean TRUE to the IS_DELETED cell via a single targeted
+ *      setValue() call — minimum surface area, maximum write speed.
  *
  * Downstream Effects:
  *   • handleFetchDirectory() server-side pre-filter will silently discard
@@ -374,16 +376,16 @@ function handleDeleteRecord(payload) {
       return createResponse({ success: false, status: "error", message: "Error: Database sheet not found." });
     }
 
-    var studentId = String(payload.STUDENT_ID);
+    var studentId = String(payload.STUDENT_ID).trim();
 
-    // ── STEP 1: Pull full data range into RAM in a single API call ─────────
-    var rawData = sheet.getDataRange().getValues();
-
-    if (rawData.length <= 1) {
+    // ── STEP 1: Fetch ONLY the header row to resolve column indexes ─────────
+    // Replaces getDataRange().getValues() — avoids pulling the entire sheet
+    // into server RAM. A single-row read is O(columns) vs O(rows × columns).
+    var lastCol = sheet.getLastColumn();
+    if (lastCol === 0) {
       return createResponse({ success: false, status: "error", message: "Error: Directory is empty." });
     }
-
-    var headers = rawData[0];
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
 
     // ── STEP 2: Resolve IS_DELETED column index from the live header row ───
     // Dynamic resolution ensures correctness regardless of column ordering.
@@ -402,25 +404,30 @@ function handleDeleteRecord(payload) {
       });
     }
 
-    // ── STEP 3: Locate target row by STUDENT_ID match ──────────────────────
-    var targetRowIndex = -1; // 0-based within rawData (includes header at [0])
-
-    for (var i = 1; i < rawData.length; i++) {
-      if (String(rawData[i][0]).trim() === studentId.trim()) {
-        targetRowIndex = i;
-        break;
-      }
-    }
+    // ── STEP 3: Locate target row via TextFinder scoped to Column A ─────────
+    // TextFinder.findNext() issues a single server-side index scan on Column A
+    // (STUDENT_ID) with exact-cell matching, bypassing any full-sheet RAM load.
+    var targetCell = sheet.getRange("A:A")
+      .createTextFinder(studentId)
+      .matchEntireCell(true)
+      .findNext();
 
     // Validation Gate: student not found
-    if (targetRowIndex === -1) {
-      return createResponse({ success: false, status: "error", message: "Error: Student ID '" + studentId + "' not found in database." });
+    if (!targetCell) {
+      return createResponse({
+        success: false,
+        status: "error",
+        message: "Error: Student ID '" + studentId + "' not found in database."
+      });
     }
 
+    var rowIndex = targetCell.getRow(); // 1-based sheet row number
+
     // ── STEP 4: Idempotency Guard ───────────────────────────────────────────
-    // If the row is already soft-deleted, reject silently to prevent
-    // duplicate archival signals and unnecessary write quota consumption.
-    var existingFlag = rawData[targetRowIndex][deletedColIdx];
+    // Read the IS_DELETED cell for this row only — single targeted fetch.
+    // If the row is already soft-deleted, reject to prevent duplicate
+    // archival signals and unnecessary write quota consumption.
+    var existingFlag = sheet.getRange(rowIndex, deletedColIdx + 1).getValue();
     if (existingFlag === true || String(existingFlag).toUpperCase() === "TRUE") {
       return createResponse({
         success: false,
@@ -430,15 +437,9 @@ function handleDeleteRecord(payload) {
     }
 
     // ── STEP 5: Write IS_DELETED = TRUE (Soft-Delete Commit) ───────────────
-    // Convert both indexes to 1-based spreadsheet coordinates.
-    //   targetRowIndex is 0-based in rawData (header = row 0),
-    //   so the sheet row number = targetRowIndex + 1.
-    //   deletedColIdx is 0-based, so the sheet column number = deletedColIdx + 1.
-    var sheetRowNumber = targetRowIndex + 1;
-    var sheetColNumber = deletedColIdx + 1;
-
+    // deletedColIdx is 0-based; sheet column number = deletedColIdx + 1.
     // Targeted single-cell write — minimum API surface, zero row shifting.
-    sheet.getRange(sheetRowNumber, sheetColNumber).setValue(true);
+    sheet.getRange(rowIndex, deletedColIdx + 1).setValue(true);
 
     return createResponse({
       success: true,
@@ -641,60 +642,96 @@ function handleFetchDirectory(payload) {
 }
 
 /**
- * Edits a specific record based on STUDENT_ID
+ * Edits a specific record based on STUDENT_ID.
+ *
+ * ── TextFinder Upgrade ───────────────────────────────────────────────────────
+ * The legacy implementation loaded the entire sheet into server RAM via
+ * getDataRange().getValues() to perform a linear STUDENT_ID scan.  At scale
+ * this is O(rows × columns) in both time and memory.
+ *
+ * Upgraded Execution Pipeline:
+ *   1. Fetch ONLY Row 1 (headers) to map dynamic column indexes.
+ *   2. Use TextFinder scoped to Column A (STUDENT_ID) with matchEntireCell(true)
+ *      for an O(1) server-side index seek — no full-sheet RAM load.
+ *   3. Fetch ONLY the target data row via getRange(rowIndex, 1, 1, headers.length)
+ *      to build the merged rowDataToSave array.
+ *   4. Write the merged array back to that single row.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 function handleEditRecord(record) {
   const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sheet = spreadsheet.getSheetByName(CONFIG.MASTER_SHEET_NAME);
-  
+
   if (!sheet) {
     return createResponse({ status: "error", message: "Database not found." });
   }
-  
-  const dataRange = sheet.getDataRange();
-  const allValues = dataRange.getValues();
-  const headers = allValues[0];
-  
+
+  // ── STEP 1: Fetch ONLY the header row ──────────────────────────────────────
+  // Replaces getDataRange().getValues() — avoids pulling the full sheet into
+  // server RAM.  A single-row read is O(columns) vs O(rows × columns).
+  const lastCol = sheet.getLastColumn();
+  if (lastCol === 0) {
+    return createResponse({ status: "error", message: "Database is empty." });
+  }
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  // Schema guard — STUDENT_ID must exist as a header for safe column mapping.
   const studentIdIndex = headers.indexOf("STUDENT_ID");
   if (studentIdIndex === -1) {
     return createResponse({ status: "error", message: "Invalid schema mapping." });
   }
-  
-  let rowIndex = -1;
-  for (let i = 1; i < allValues.length; i++) {
-    if (String(allValues[i][studentIdIndex]) === String(record.STUDENT_ID)) {
-      rowIndex = i + 1; // 1-indexed for spreadsheet, plus 1 for header
-      break;
-    }
-  }
-  
-  if (rowIndex === -1) {
+
+  // ── STEP 2: Locate target row via TextFinder scoped to Column A ────────────
+  // TextFinder.findNext() performs a server-side exact-cell index scan on
+  // Column A (STUDENT_ID), returning the matching Range object directly.
+  // This eliminates the full-sheet for-loop scan entirely.
+  const targetCell = sheet.getRange("A:A")
+    .createTextFinder(String(record.STUDENT_ID))
+    .matchEntireCell(true)
+    .findNext();
+
+  if (!targetCell) {
     return createResponse({ status: "error", message: "Student record not found." });
   }
-  
-  // Convert new base64 files if any
+
+  const rowIndex = targetCell.getRow(); // 1-based sheet row number
+
+  // ── STEP 3: Convert new base64 file uploads if present ─────────────────────
   if (record.STUDENT_PHOTO_URL && record.STUDENT_PHOTO_URL.startsWith("data:")) {
-    record.STUDENT_PHOTO_URL = uploadCandidateBase64(record.STUDENT_PHOTO_URL, "STUDENT_" + record.STUDENT_NAME.replace(/\s+/g, "_") + "_" + record.STUDENT_ID);
+    record.STUDENT_PHOTO_URL = uploadCandidateBase64(
+      record.STUDENT_PHOTO_URL,
+      "STUDENT_" + record.STUDENT_NAME.replace(/\s+/g, "_") + "_" + record.STUDENT_ID
+    );
   }
-  
+
   if (record.STUDENT_SIGNATURE_URL && record.STUDENT_SIGNATURE_URL.startsWith("data:")) {
-    record.STUDENT_SIGNATURE_URL = uploadCandidateBase64(record.STUDENT_SIGNATURE_URL, "SIGNATURE_" + record.STUDENT_NAME.replace(/\s+/g, "_") + "_" + record.STUDENT_ID);
+    record.STUDENT_SIGNATURE_URL = uploadCandidateBase64(
+      record.STUDENT_SIGNATURE_URL,
+      "SIGNATURE_" + record.STUDENT_NAME.replace(/\s+/g, "_") + "_" + record.STUDENT_ID
+    );
   }
-  
+
+  // ── STEP 4: Fetch ONLY the target data row ─────────────────────────────────
+  // Pull exclusively the row we need to merge with incoming changes.
+  // This is O(columns) — zero overhead from unrelated rows.
+  const existingRowData = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
+
+  // ── STEP 5: Merge incoming record fields with the existing row data ─────────
+  // For each column: use the new value from `record` if supplied; otherwise
+  // preserve the existing cell value so untouched fields are never blanked.
   const rowDataToSave = [];
   for (let j = 0; j < headers.length; j++) {
     const col = headers[j];
-    // Keep old value if not provided in update, except when explicitly overwritten
     if (record[col] !== undefined) {
       rowDataToSave.push(record[col]);
     } else {
-      rowDataToSave.push(allValues[rowIndex - 2][j]); 
+      rowDataToSave.push(existingRowData[j]);
     }
   }
-  
-  // Single bulk write back to the row
+
+  // ── STEP 6: Single bulk write back to that specific row ────────────────────
   sheet.getRange(rowIndex, 1, 1, headers.length).setValues([rowDataToSave]);
-  
+
   return createResponse({ status: "success", message: "Record updated successfully." });
 }
 
