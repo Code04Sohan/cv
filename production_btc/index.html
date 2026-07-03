@@ -78,31 +78,51 @@
 
         /* Smooth UI entry */
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0);     }
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
 
         /* ── Sidebar Shimmer Pulse ───────────────────────────────── */
         @keyframes shimmer {
-            0%   { background-position: -400px 0; }
-            100% { background-position:  400px 0; }
+            0% {
+                background-position: -400px 0;
+            }
+
+            100% {
+                background-position: 400px 0;
+            }
         }
+
         .shimmer-bg {
-            background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.08) 50%, transparent 75%);
+            background: linear-gradient(90deg, transparent 25%, rgba(255, 255, 255, 0.08) 50%, transparent 75%);
             background-size: 800px 100%;
             animation: shimmer 1.6s infinite linear;
         }
 
         /* ── Hover-Expand Sidebar ────────────────────────────────── */
         #app_navigation_sidebar {
-            width: 4rem;               /* 64px collapsed baseline */
-            transition: width 300ms cubic-bezier(0.4,0,0.2,1);
+            width: 4rem;
+            /* 64px collapsed baseline */
+            transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1);
             overflow-x: hidden;
         }
+
         #app_navigation_sidebar:hover {
-            width: 16rem;              /* 256px expanded */
+            width: 16rem;
+            /* 256px expanded */
         }
+
         /* Labels hidden when collapsed, fade-in on parent hover */
         #app_navigation_sidebar .sidebar-label {
             opacity: 0;
@@ -111,10 +131,12 @@
             white-space: nowrap;
             transition: opacity 200ms ease 80ms, width 200ms ease 80ms;
         }
+
         #app_navigation_sidebar:hover .sidebar-label {
             opacity: 1;
             width: auto;
         }
+
         /* Active-state ring on collapsed icons */
         #app_navigation_sidebar .nav-icon-wrap {
             transition: color 200ms ease;
@@ -273,14 +295,20 @@
                 class="relative shrink-0 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col py-3 shadow-md z-20">
 
                 <!-- Collapsed-state brand monogram -->
-                <div class="h-10 flex items-center px-3 mb-3 border-b border-slate-100 dark:border-slate-700 shrink-0 overflow-hidden gap-3">
-                    <div class="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-white font-black text-xs shrink-0 shadow">BY</div>
-                    <span class="sidebar-label font-black text-[11px] tracking-wider text-slate-700 dark:text-white uppercase">Babla Yoga</span>
+                <div
+                    class="h-10 flex items-center px-3 mb-3 border-b border-slate-100 dark:border-slate-700 shrink-0 overflow-hidden gap-3">
+                    <div
+                        class="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-white font-black text-xs shrink-0 shadow">
+                        BY</div>
+                    <span
+                        class="sidebar-label font-black text-[11px] tracking-wider text-slate-700 dark:text-white uppercase">Babla
+                        Yoga</span>
                 </div>
 
                 <!-- Section label — only visible when expanded -->
                 <div class="px-3 mb-1 overflow-hidden">
-                    <span class="sidebar-label text-[9px] font-bold text-slate-400 uppercase tracking-widest">Modules</span>
+                    <span
+                        class="sidebar-label text-[9px] font-bold text-slate-400 uppercase tracking-widest">Modules</span>
                 </div>
 
                 <!-- Dynamic nav items injected by app.js -->
@@ -288,9 +316,12 @@
                 </ul>
 
                 <!-- Expand hint arrow (collapsed state only) -->
-                <div class="px-3 pt-2 border-t border-slate-100 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden">
-                    <svg id="sidebarExpandHint" class="w-4 h-4 text-slate-300 dark:text-slate-600 transition-opacity duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                <div
+                    class="px-3 pt-2 border-t border-slate-100 dark:border-slate-700 shrink-0 flex items-center justify-center overflow-hidden">
+                    <svg id="sidebarExpandHint"
+                        class="w-4 h-4 text-slate-300 dark:text-slate-600 transition-opacity duration-300" fill="none"
+                        stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                     </svg>
                 </div>
             </aside>
@@ -413,9 +444,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="scripts/utils/pdfGenerator.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="scripts/utils/feePdfGenerator.js"></script>
     <script src="scripts/utils/notificationUtils.js"></script>
-    
+
     <script src="scripts/login.js"></script>
     <script src="scripts/app.js"></script>
 </body>
