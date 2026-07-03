@@ -59,17 +59,45 @@ window.PaymentLedgerModule = (function () {
     }
 
     // =========================================
-    // 🚀 MODULE LIFECYCLE
+    // 🚀 MODULE LIFECYCLE (Upgraded with Auto-Hydration)
     // =========================================
 
     async function mount(container) {
         _container = container;
         _container.innerHTML = buildShellHTML();
 
-        // Populate course and batch dropdowns from MasterCandidateCache if available
+        // 1. Auto-Hydration Check
+        // If the user navigates here directly, the global cache will be empty.
+        if (!window.MasterCandidateCache || window.MasterCandidateCache.length === 0) {
+            console.info('[PaymentLedger] Master cache empty. Initiating auto-hydration...');
+            toggleSpinner(true);
+            
+            try {
+                // 2. The Fetch Fallback
+                const res = await window.UIUtils.fetchFromEngine({ 
+                    action: 'FETCH_DIRECTORY', 
+                    token: getAuthToken() 
+                });
+                
+                if (res && res.status === 'success' && Array.isArray(res.data)) {
+                    window.MasterCandidateCache = res.data;
+                    console.info('[PaymentLedger] Auto-hydration complete. Cache populated.');
+                } else {
+                    console.warn('[PaymentLedger] Auto-hydration returned invalid data.');
+                }
+            } catch (error) {
+                console.error('[PaymentLedger] Auto-hydration network failure:', error);
+                if (window.UIUtils) window.UIUtils.showToast('Failed to load student directory.', 'error');
+            }
+            
+            toggleSpinner(false);
+        }
+
+        // 3. Safe Rendering
+        // The dropdowns and filters will now map correctly to the fully populated cache.
         populateDropdowns();
 
-        // Perform initial fetch
+        // Perform initial fetch for the Ledger Logs
         await fetchAndApplyFilters();
     }
 
