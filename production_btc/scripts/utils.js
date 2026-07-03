@@ -94,15 +94,26 @@ window.UIUtils = (function() {
      * API Fetch Wrapper with timeout and standardized error handling
      */
     async function fetchFromEngine(payload) {
-        try {
-            const response = await fetch(window.SystemConfig.API_URL, {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-            return await response.json();
-        } catch (error) {
-            console.error("[Network Error]:", error);
-            throw new Error("Cloud communication failure.");
+        const MAX_RETRIES = 3;
+        const delay = ms => new Promise(r => setTimeout(r, ms));
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const response = await fetch(window.SystemConfig.API_URL, {
+                    method: "POST",
+                    body: JSON.stringify(payload),
+                    redirect: "follow"
+                });
+                return await response.json();
+            } catch (error) {
+                if (attempt < MAX_RETRIES) {
+                    console.warn('[Network] Retrying request...');
+                    await delay(500 * attempt);
+                } else {
+                    console.error("[Network Error]:", error);
+                    throw new Error("Cloud communication failure.");
+                }
+            }
         }
     }
 
