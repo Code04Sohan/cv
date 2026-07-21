@@ -665,11 +665,15 @@ window.DirectoryViewerModule = (function () {
     /**
      * Routes row data to the PDFGenerator utility for admission form reprint.
      */
-    function printPDF(index) {
+    async function printPDF(index) {
         const rowData = _directoryData[index];
         if (!rowData) return;
+        
+        const fullData = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
+        if (!fullData) return;
+
         if (window.PDFGenerator && typeof window.PDFGenerator.createApplicationForm === 'function') {
-            window.PDFGenerator.createApplicationForm(rowData);
+            window.PDFGenerator.createApplicationForm(fullData);
         } else {
             if (window.UIUtils) window.UIUtils.showToast("PDF utility is not loaded.", "error");
         }
@@ -774,8 +778,11 @@ window.DirectoryViewerModule = (function () {
      * Mounts a premium, read-only candidate profile dashboard.
      * CORS-Safe: No Drive image streaming. Uses redirect buttons instead.
      */
-    function viewRecord(index) {
-        const data = _directoryData[index];
+    async function viewRecord(index) {
+        const rowData = _directoryData[index];
+        if (!rowData) return;
+        
+        const data = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
         if (!data) return;
 
         // --- Raw Drive URLs for redirect buttons (no CORS fetch) ---
@@ -971,8 +978,11 @@ window.DirectoryViewerModule = (function () {
      * session split, Aadhaar masking, and Base64 media upload fields.
      * Excludes financial/fee and declaration fields from editing.
      */
-    function editRecord(index) {
-        const data = _directoryData[index];
+    async function editRecord(index) {
+        const rowData = _directoryData[index];
+        if (!rowData) return;
+        
+        const data = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
         if (!data) return;
 
         // Reset temporary state

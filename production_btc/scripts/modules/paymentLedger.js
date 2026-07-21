@@ -23,6 +23,7 @@ window.PaymentLedgerModule = (function () {
     let _container = null;
     let _rawLedgerDataset = [];
     window.currentFilteredLedgerDataset = [];
+    let _currentViewMode = 'PAID';
 
     let _ledgerCurrentPage = 1;
     const _ledgerRowsPerPage = 10; // Optimized view count window for financial log views
@@ -71,14 +72,14 @@ window.PaymentLedgerModule = (function () {
         if (!window.MasterCandidateCache || window.MasterCandidateCache.length === 0) {
             console.info('[PaymentLedger] Master cache empty. Initiating auto-hydration...');
             toggleSpinner(true);
-            
+
             try {
                 // 2. The Fetch Fallback
-                const res = await window.UIUtils.fetchFromEngine({ 
-                    action: 'FETCH_DIRECTORY', 
-                    token: getAuthToken() 
+                const res = await window.UIUtils.fetchFromEngine({
+                    action: 'FETCH_DIRECTORY',
+                    token: getAuthToken()
                 });
-                
+
                 if (res && res.status === 'success' && Array.isArray(res.data)) {
                     window.MasterCandidateCache = res.data;
                     console.info('[PaymentLedger] Auto-hydration complete. Cache populated.');
@@ -89,13 +90,32 @@ window.PaymentLedgerModule = (function () {
                 console.error('[PaymentLedger] Auto-hydration network failure:', error);
                 if (window.UIUtils) window.UIUtils.showToast('Failed to load student directory.', 'error');
             }
-            
+
             toggleSpinner(false);
         }
 
         // 3. Safe Rendering
         // The dropdowns and filters will now map correctly to the fully populated cache.
         populateDropdowns();
+
+        // Implement Default Dates
+        const startInput = document.getElementById('ledgerStartDate');
+        const endInput = document.getElementById('ledgerEndDate');
+        if (startInput && endInput && !startInput.value && !endInput.value) {
+            const today = new Date();
+            const thirtyDaysAgo = new Date(today);
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+
+            const formatDate = (date) => {
+                const yyyy = date.getFullYear();
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            };
+
+            startInput.value = formatDate(thirtyDaysAgo);
+            endInput.value = formatDate(today);
+        }
 
         // Perform initial fetch for the Ledger Logs
         await fetchAndApplyFilters();
@@ -181,33 +201,31 @@ window.PaymentLedgerModule = (function () {
                             </select>
                         </div>
                         <div class="space-y-1.5">
-                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Month</label>
-                            <select id="ledgerTargetMonth" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
-                                <option value="ALL">All Months</option>
-                                <option value="01">January</option>
-                                <option value="02">February</option>
-                                <option value="03">March</option>
-                                <option value="04">April</option>
-                                <option value="05">May</option>
-                                <option value="06">June</option>
-                                <option value="07">July</option>
-                                <option value="08">August</option>
-                                <option value="09">September</option>
-                                <option value="10">October</option>
-                                <option value="11">November</option>
-                                <option value="12">December</option>
-                            </select>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">From Date</label>
+                            <input type="date" id="ledgerStartDate" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                         </div>
                         <div class="space-y-1.5">
-                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Year</label>
-                            <select id="ledgerTargetYear" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
-                                <option value="${new Date().getFullYear() + 1}">${new Date().getFullYear() + 1}</option>
-                                <option value="${new Date().getFullYear()}" selected>${new Date().getFullYear()}</option>
-                                <option value="${new Date().getFullYear() - 1}">${new Date().getFullYear() - 1}</option>
-                                <option value="${new Date().getFullYear() - 2}">${new Date().getFullYear() - 2}</option>
-                                <option value="${new Date().getFullYear() - 3}">${new Date().getFullYear() - 3}</option>
-                            </select>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">To Date</label>
+                            <input type="date" id="ledgerEndDate" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-medium text-sm text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                         </div>
+                    </div>
+                    
+                    <!-- NEW: PAID / DUE TOGGLE -->
+                    <div class="mt-6 flex justify-center w-full">
+                         <div class="inline-flex bg-slate-100 dark:bg-slate-900 rounded-xl p-1.5 shadow-inner">
+                            <label class="relative cursor-pointer">
+                                <input type="radio" name="ledgerViewMode" value="PAID" checked onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="peer sr-only">
+                                <div class="px-8 py-2.5 rounded-lg text-sm font-black tracking-wider uppercase text-slate-500 dark:text-slate-400 peer-checked:bg-white peer-checked:dark:bg-slate-800 peer-checked:text-indigo-600 peer-checked:dark:text-indigo-400 peer-checked:shadow-sm transition-all">
+                                    PAID TRANSACTIONS
+                                </div>
+                            </label>
+                            <label class="relative cursor-pointer">
+                                <input type="radio" name="ledgerViewMode" value="DUE" onchange="window.PaymentLedgerModule.fetchAndApplyFilters()" class="peer sr-only">
+                                <div class="px-8 py-2.5 rounded-lg text-sm font-black tracking-wider uppercase text-slate-500 dark:text-slate-400 peer-checked:bg-white peer-checked:dark:bg-slate-800 peer-checked:text-rose-600 peer-checked:dark:text-rose-400 peer-checked:shadow-sm transition-all">
+                                    DUE / DEFAULTERS
+                                </div>
+                            </label>
+                         </div>
                     </div>
                 </div>
 
@@ -237,7 +255,7 @@ window.PaymentLedgerModule = (function () {
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse">
                             <thead>
-                                <tr class="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
+                                <tr id="ledgerTableHeadRow" class="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
                                     <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Date</th>
                                     <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Transaction ID</th>
                                     <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Student Details</th>
@@ -334,23 +352,34 @@ window.PaymentLedgerModule = (function () {
     // =========================================
 
     async function fetchAndApplyFilters() {
-        const monthInput = document.getElementById('ledgerTargetMonth');
-        const yearInput = document.getElementById('ledgerTargetYear');
+        const startInput = document.getElementById('ledgerStartDate');
+        const endInput = document.getElementById('ledgerEndDate');
+        const viewModeEl = document.querySelector('input[name="ledgerViewMode"]:checked');
 
-        if (!yearInput) return;
+        const startDate = startInput ? startInput.value : '';
+        const endDate = endInput ? endInput.value : '';
+        const viewMode = viewModeEl ? viewModeEl.value : 'PAID';
 
-        const targetMonth = monthInput ? monthInput.value : '';
-        const targetYear = yearInput.value;
+        if (!startDate || !endDate) return;
+
+        _currentViewMode = viewMode;
+
+        // UI/UX Enhancement: Disable Course/Batch dropdowns in PAID mode
+        const courseSelect = document.getElementById('ledgerCourseFilter');
+        const batchSelect = document.getElementById('ledgerBatchFilter');
+        if (courseSelect) courseSelect.disabled = (_currentViewMode === 'PAID');
+        if (batchSelect) batchSelect.disabled = (_currentViewMode === 'PAID');
 
         toggleSpinner(true);
         renderLedgerTableSkeleton(); // ⚡ Phase 1: Fire visual placeholders immediately
 
         try {
             const res = await window.UIUtils.fetchFromEngine({
-                action: 'FETCH_MONTHLY_LEDGER',
+                action: 'FETCH_AUDIT_REPORT',
                 token: getAuthToken(),
-                month: targetMonth,
-                year: targetYear
+                startDate: startDate,
+                endDate: endDate,
+                viewMode: viewMode
             });
 
             if (res && res.status === 'success' && Array.isArray(res.data)) {
@@ -404,40 +433,53 @@ window.PaymentLedgerModule = (function () {
 
         window.currentFilteredLedgerDataset = _rawLedgerDataset.filter(log => {
             const logStudentId = String(log.STUDENT_ID || '').trim();
-            const candidateInfo = candidateMap[logStudentId] || { course: '', batch: '' };
 
-            log._course = candidateInfo.course;
-            log._batch = candidateInfo.batch;
+            let course = '';
+            let batch = '';
 
-            if (courseQuery && candidateInfo.course !== courseQuery) return false;
-            if (batchQuery && candidateInfo.batch !== batchQuery) return false;
+            if (_currentViewMode === 'PAID') {
+                const candidateInfo = candidateMap[logStudentId] || { course: '', batch: '' };
+                log._course = candidateInfo.course;
+                log._batch = candidateInfo.batch;
+                // Skip course and batch filter checking for PAID mode
+            } else {
+                course = log.ENROLLED_COURSE || '';
+                batch = log.CLASS_BATCH_DAYS || '';
+                log._course = course;
+                log._batch = batch;
+
+                if (courseQuery && course !== courseQuery) return false;
+                if (batchQuery && batch !== batchQuery) return false;
+            }
 
             if (query) {
                 const nameMatch = log.STUDENT_NAME && String(log.STUDENT_NAME).toLowerCase().includes(query);
                 const idMatch = log.STUDENT_ID && String(log.STUDENT_ID).toLowerCase().includes(query);
                 const rlMatch = log.RL_NO && String(log.RL_NO).toLowerCase().includes(query);
-                const txnMatch = log.TXN_ID && String(log.TXN_ID).toLowerCase().includes(query);
+                const txnMatch = _currentViewMode === 'PAID' && log.TXN_ID && String(log.TXN_ID).toLowerCase().includes(query);
                 if (!nameMatch && !idMatch && !rlMatch && !txnMatch) return false;
             }
 
             return true;
         });
 
-        window.currentFilteredLedgerDataset.sort((a, b) => {
-            const d1 = new Date(a.TIMESTAMP).getTime();
-            const d2 = new Date(b.TIMESTAMP).getTime();
-            return d2 - d1;
-        });
+        if (_currentViewMode === 'PAID') {
+            window.currentFilteredLedgerDataset.sort((a, b) => {
+                const d1 = new Date(a.TIMESTAMP).getTime();
+                const d2 = new Date(b.TIMESTAMP).getTime();
+                return d2 - d1;
+            });
+        }
 
         // Update Aggregate UI Counters directly to existing DOM IDs
         let totalRevenue = 0;
         window.currentFilteredLedgerDataset.forEach(row => {
-            totalRevenue += Number(row.AMOUNT_COLLECTED) || 0;
+            totalRevenue += _currentViewMode === 'PAID' ? (Number(row.AMOUNT_COLLECTED) || 0) : 0;
         });
 
         const rowsText = document.getElementById('ledgerSummaryRows');
         const volText = document.getElementById('ledgerSummaryVolume');
-        
+
         if (rowsText) rowsText.innerText = `Showing ${window.currentFilteredLedgerDataset.length} audited transaction logs.`;
         if (volText) volText.innerText = `₹ ${totalRevenue}`;
 
@@ -475,7 +517,7 @@ window.PaymentLedgerModule = (function () {
         _ledgerFilteredPool = [...rawLogsArray].sort((a, b) => {
             return String(b.TXN_ID || '').localeCompare(String(a.TXN_ID || ''));
         });
-        
+
         _ledgerCurrentPage = 1;
         renderPaginatedLedger();
     }
@@ -483,7 +525,34 @@ window.PaymentLedgerModule = (function () {
     function renderPaginatedLedger() {
         const tableBody = document.getElementById('ledgerGridBody');
         const controlsContainer = document.getElementById('ledger_pagination_controls');
+        const theadRow = document.getElementById('ledgerTableHeadRow');
+
         if (!tableBody) return;
+
+        if (theadRow) {
+            if (_currentViewMode === 'DUE') {
+                theadRow.innerHTML = `
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Student Name</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Roll No</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Course</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Batch / Days</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Contact Mobile</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Admission Date</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">Actions</th>
+                `;
+            } else {
+                theadRow.innerHTML = `
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Date</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Transaction ID</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Student Details</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Course / Batch</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Fee Period</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Status</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">Amount</th>
+                    <th class="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">Actions</th>
+                `;
+            }
+        }
 
         const totalItems = _ledgerFilteredPool.length;
         const totalPages = Math.ceil(totalItems / _ledgerRowsPerPage) || 1;
@@ -497,13 +566,41 @@ window.PaymentLedgerModule = (function () {
         const displayedItems = _ledgerFilteredPool.slice(startIdx, endIdx);
 
         if (displayedItems.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-xs font-bold text-slate-400 tracking-wide uppercase">No financial entries match your lookup preferences.</td></tr>`;
+            const colspan = _currentViewMode === 'DUE' ? 7 : 8;
+            tableBody.innerHTML = `<tr><td colspan="${colspan}" class="p-8 text-center text-xs font-bold text-slate-400 tracking-wide uppercase">No entries match your lookup preferences.</td></tr>`;
             if (controlsContainer) controlsContainer.innerHTML = '';
             return;
         }
 
         // Map rows - Preserving our custom notification resend links inside the Name column cell frame
         tableBody.innerHTML = displayedItems.map(item => {
+            const safeStudentId = escAttr(item.STUDENT_ID);
+
+            if (_currentViewMode === 'DUE') {
+                return `
+                <tr class="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
+                    <td class="p-3">
+                        <div class="text-xs font-bold text-slate-800 dark:text-slate-200">${item.STUDENT_NAME || 'N/A'}</div>
+                        <div class="text-[10px] text-slate-400 font-medium mt-0.5">${item.STUDENT_ID || ''}</div>
+                    </td>
+                    <td class="p-3 font-mono text-xs font-bold text-slate-600 dark:text-slate-300">${item.RL_NO || 'N/A'}</td>
+                    <td class="p-3 text-xs font-semibold text-slate-600 dark:text-slate-300">${item.ENROLLED_COURSE || 'N/A'}</td>
+                    <td class="p-3 text-xs text-slate-500 dark:text-slate-400">${item.CLASS_BATCH_DAYS || 'N/A'}</td>
+                    <td class="p-3 font-mono text-xs font-bold tracking-wide text-indigo-500">${item.STUDENT_MOBILE || 'N/A'}</td>
+                    <td class="p-3 text-xs text-slate-500 dark:text-slate-400">${window.UIUtils ? window.UIUtils.cleanDateTimeString(item.DATE_OF_ADMISSION) : (item.DATE_OF_ADMISSION || 'N/A')}</td>
+                    <td class="p-3 text-center align-middle">
+                        <button onclick="(async function(){
+                            if(window.AppCore && window.AppCore.navigateTo) { await window.AppCore.navigateTo('paymentCollector'); }
+                            if(window.PaymentCollectorModule && window.PaymentCollectorModule.openCartForCandidate) {
+                                window.PaymentCollectorModule.openCartForCandidate({STUDENT_ID: '${safeStudentId}'});
+                            }
+                        })()" class="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors" title="Pay Fees">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                        </button>
+                    </td>
+                </tr>`;
+            }
+
             // Re-apply display date formatting just as before, targeting backend variables
             let displayDate = 'N/A';
             const rawDate = item.TRANSACTION_DATE || item.DATE || item.TIMESTAMP;
@@ -523,21 +620,20 @@ window.PaymentLedgerModule = (function () {
                 }
             }
 
-            const courseBatchText = (item._course || item._batch) 
+            const courseBatchText = (item._course || item._batch)
                 ? `${item._course || 'N/A'} <br> <span class="text-[10px] text-slate-500 dark:text-slate-400">${item._batch || ''}</span>`
                 : 'N/A';
 
             // Premium Status Badge Resolution Rule
             const activeStatus = item.STATUS || 'PAID';
-            const statusClass = activeStatus === 'PAID' 
-                ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400' 
+            const statusClass = activeStatus === 'PAID'
+                ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400'
                 : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400';
 
             // Safely escape all data values that will appear in inline onclick attributes
-            const safeStudentId  = escAttr(item.STUDENT_ID);
-            const safeTxnId      = escAttr(item.TXN_ID);
-            const safeAmount     = escAttr(item.AMOUNT_COLLECTED);
-            const safeFeePeriod  = escAttr(item.FEE_PERIOD);
+            const safeTxnId     = escAttr(item.TXN_ID);
+            const safeAmount    = escAttr(item.AMOUNT_COLLECTED);
+            const safeFeePeriod = escAttr(item.FEE_PERIOD);
 
             return `
             <tr class="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
@@ -652,55 +748,58 @@ window.PaymentLedgerModule = (function () {
 
     function exportToCSV() {
         if (!window.currentFilteredLedgerDataset || window.currentFilteredLedgerDataset.length === 0) {
-            if (window.UIUtils) window.UIUtils.showToast("No data available to export.", "warning");
+            if (window.UIUtils) window.UIUtils.showToast("No data available to export.", "error");
             return;
         }
 
-        // Define CSV standard headers
-        let csvContent = "Transaction ID,Timestamp,Student Name,Student ID,Billing Period,Amount,Status\n";
-
-        // Build rows from local memory array cache
-        window.currentFilteredLedgerDataset.forEach(item => {
-            const dateObj = new Date(item.TIMESTAMP);
-            const displayDate = isNaN(dateObj.getTime()) ? 'N/A' : dateObj.toLocaleDateString('en-IN');
-
-            const row = [
-                item.TXN_ID || 'N/A',
-                displayDate,
-                `"${item.STUDENT_NAME || 'N/A'}"`, // Encapsulate in quotes to prevent comma breaks
-                item.STUDENT_ID || 'N/A',
-                item.FEE_PERIOD || 'N/A',
-                item.AMOUNT_COLLECTED || 0,
-                item.STATUS || 'UNKNOWN'
-            ];
-            csvContent += row.join(",") + "\n";
-        });
-
-        // Generate data blob download asset container
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-
+        let csvContent = "";
+        let fileName = "";
         const timestamp = new Date().toISOString().slice(0, 10);
-        // Clean Variable Assignment: Zero escape errors
-        const fileName = `Statement_Export_${timestamp}.csv`;
 
+        if (_currentViewMode === 'DUE') {
+            csvContent = "Student Name,Student ID,Roll No,Course,Batch,Contact,Admission Date\n";
+            window.currentFilteredLedgerDataset.forEach(item => {
+                const row = [
+                    `"${item.STUDENT_NAME || 'N/A'}"`,
+                    item.STUDENT_ID || 'N/A',
+                    item.RL_NO || 'N/A',
+                    `"${item.ENROLLED_COURSE || 'N/A'}"`,
+                    `"${item.CLASS_BATCH_DAYS || 'N/A'}"`,
+                    item.STUDENT_MOBILE || 'N/A',
+                    item.DATE_OF_ADMISSION || 'N/A'
+                ];
+                csvContent += row.join(",") + "\n";
+            });
+            fileName = `Defaulters_Export_${timestamp}.csv`;
+        } else {
+            csvContent = "Transaction ID,Timestamp,Student Name,Student ID,Billing Period,Amount,Status\n";
+            window.currentFilteredLedgerDataset.forEach(item => {
+                const dateObj = new Date(item.TIMESTAMP);
+                const displayDate = isNaN(dateObj.getTime()) ? 'N/A' : dateObj.toLocaleDateString('en-IN');
+                const row = [
+                    item.TXN_ID || 'N/A',
+                    displayDate,
+                    `"${item.STUDENT_NAME || 'N/A'}"`,
+                    item.STUDENT_ID || 'N/A',
+                    item.FEE_PERIOD || 'N/A',
+                    item.AMOUNT_COLLECTED || 0,
+                    item.STATUS || 'UNKNOWN'
+                ];
+                csvContent += row.join(",") + "\n";
+            });
+            fileName = `Statement_Export_${timestamp}.csv`;
+        }
+
+        // Trigger the download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
         link.setAttribute("download", fileName);
         link.style.visibility = 'hidden';
-
         document.body.appendChild(link);
         link.click();
-
-        // Immediate garbage collection
-        setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }, 100);
-
-        if (window.UIUtils) {
-            window.UIUtils.showToast("Statement exported successfully.", "success");
-        }
+        document.body.removeChild(link);
     }
 
     function goToPage(page) {
@@ -709,7 +808,7 @@ window.PaymentLedgerModule = (function () {
         if (safePage === _ledgerCurrentPage) return;
         _ledgerCurrentPage = safePage;
         renderPaginatedLedger();
-        
+
         const tableEl = document.getElementById('ledgerGridBody');
         if (tableEl) tableEl.closest('.overflow-x-auto')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
