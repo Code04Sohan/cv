@@ -5,7 +5,7 @@
  * Reusable interface controllers (Toasts, Modals, Loading States)
  */
 
-window.UIUtils = (function () {
+window.UIUtils = (function() {
     'use strict';
 
     /**
@@ -38,7 +38,7 @@ window.UIUtils = (function () {
         if (!container) return;
 
         const toast = document.createElement('div');
-
+        
         let colors = 'bg-slate-800 text-white border-slate-700'; // default info
         let icon = `<svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
 
@@ -52,7 +52,7 @@ window.UIUtils = (function () {
 
         toast.className = `px-4 py-3 rounded-xl border shadow-lg text-sm font-bold flex items-center gap-3 animate-fade-in ${colors}`;
         toast.innerHTML = `${icon} <span>${message}</span>`;
-
+        
         container.appendChild(toast);
 
         // Auto-remove after 4 seconds
@@ -70,7 +70,7 @@ window.UIUtils = (function () {
     function openModal(modalId) {
         const overlay = document.getElementById('globalOverlay');
         const modal = document.getElementById(modalId);
-
+        
         if (overlay && modal) {
             overlay.classList.replace('overlay-hidden', 'overlay-visible');
             modal.classList.replace('modal-hidden', 'modal-visible');
@@ -82,7 +82,7 @@ window.UIUtils = (function () {
         if (modal) {
             modal.classList.replace('modal-visible', 'modal-hidden');
         }
-
+        
         // Check if any other modals are still open
         const openModals = document.querySelectorAll('.modal-visible');
         if (openModals.length === 0) {
@@ -117,54 +117,11 @@ window.UIUtils = (function () {
         }
     }
 
-    /**
-     * Fetch a Single Candidate's full record from the Engine
-     * @param {string} studentId - The target ID
-     * @returns {Object|null} - The full student record object, or null on failure
-     */
-    async function fetchSingleStudentData(studentId) {
-        if (!studentId) return null;
-
-        try {
-            // FIX: Check if the element exists before modifying its style
-            const spinner = document.getElementById('loadingSpinner');
-            if (spinner) {
-                spinner.style.display = 'flex';
-            }
-
-            const payload = {
-                action: "GET_SINGLE_RECORD",
-                token: localStorage.getItem("BAHA_SECURE_TOKEN"),
-                studentId: studentId
-            };
-
-            const response = await fetchFromEngine(payload);
-
-            if (response.status === "success") {
-                return response.data;
-            } else {
-                showToast(response.message || "Failed to fetch record.", "error");
-                return null;
-            }
-        } catch (error) {
-            console.error("Single Fetch Error:", error);
-            showToast("Network error while fetching record.", "error");
-            return null;
-        } finally {
-            // FIX: Check if the element exists before modifying its style
-            const spinner = document.getElementById('loadingSpinner');
-            if (spinner) {
-                spinner.style.display = 'none';
-            }
-        }
-    }
-
     return {
         showToast,
         openModal,
         closeModal,
         fetchFromEngine,
-        cleanDateTimeString,
-        fetchSingleStudentData
+        cleanDateTimeString
     };
 })();

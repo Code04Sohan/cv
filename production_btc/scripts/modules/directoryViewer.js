@@ -22,9 +22,9 @@ window.DirectoryViewerModule = (function () {
     // _dirFilteredPool: the live, search-reactive dataset slice source.
     // Kept separate from _filteredData so the legacy exportToCsv and
     // getRecordByIndex functions continue to operate against the full set.
-    let _dirCurrentPage = 1;
+    let _dirCurrentPage   = 1;
     const _dirRowsPerPage = 8;
-    let _dirFilteredPool = []; // Repopulated by initializeDirectoryPool() and applyDirectoryFilters()
+    let _dirFilteredPool  = []; // Repopulated by initializeDirectoryPool() and applyDirectoryFilters()
 
     // ── Sort Mode State ───────────────────────────────────────────────────
     // 'rollno'   → ascending numeric sort by RL_NO  (default on load)
@@ -159,22 +159,12 @@ window.DirectoryViewerModule = (function () {
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                             Download Filtered List
                         </button>
-                        <div class="w-full md:w-80 ml-0 md:ml-2">
-                            <!-- Input Container (Keeps icon vertically centered ONLY to the input box) -->
-                            <div class="relative">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                                <input type="text" id="dir_search_input" placeholder="Search by Name, ID, or Phone..."
-                                    class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-inner">
+                        <div class="relative w-full md:w-80 ml-0 md:ml-2">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                             </div>
-                            
-                            <!-- Smart Weighted Search badge sits below the input container -->
-                            <div class="flex items-center gap-1.5 mt-1 text-[11px] font-semibold text-emerald-400/90 dark:text-emerald-400 tracking-wide">
-                                <span>&#x26A1; Powered by Smart Weighted Search</span>
-                            </div>
+                            <input type="text" id="dir_search_input" placeholder="Search by Name, ID, or Phone..."
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-inner">
                         </div>
                     </div>
                 </div>
@@ -285,43 +275,31 @@ window.DirectoryViewerModule = (function () {
         const query = (searchInput?.value || '').toLowerCase().trim();
 
         const fCourse = document.getElementById('filter_course')?.value || '';
-        const fBatch = document.getElementById('filter_batch')?.value || '';
+        const fBatch  = document.getElementById('filter_batch')?.value  || '';
         const fGender = document.getElementById('filter_gender')?.value || '';
 
-        // ── STEP 1: Dropdown filters (unchanged — fast O(n) pass) ──────────
-        let pool = _directoryData.filter(item => {
-            if (fCourse && item.ENROLLED_COURSE !== fCourse) return false;
-            if (fBatch && item.CLASS_BATCH_DAYS !== fBatch) return false;
-            if (fGender && item.GENDER !== fGender) return false;
+        _filteredData = _directoryData.filter(item => {
+            // 1. Text Matcher (Name, ID, Mobile, RL_NO)
+            let textMatch = true;
+            if (query !== '') {
+                textMatch =
+                    (item.STUDENT_NAME   && item.STUDENT_NAME.toLowerCase().includes(query))   ||
+                    (item.STUDENT_ID     && String(item.STUDENT_ID).toLowerCase().includes(query)) ||
+                    (item.STUDENT_MOBILE && String(item.STUDENT_MOBILE).toLowerCase().includes(query)) ||
+                    (item.RL_NO          && String(item.RL_NO).toLowerCase().includes(query)); // Explicit String Casting Fix
+            }
+            if (!textMatch) return false;
+
+            // 2. Multi-Drop Parameters
+            if (fCourse && item.ENROLLED_COURSE    !== fCourse) return false;
+            if (fBatch  && item.CLASS_BATCH_DAYS   !== fBatch)  return false;
+            if (fGender && item.GENDER             !== fGender) return false;
+
             return true;
         });
 
-        // ── STEP 2: Smart Weighted Search Scoring Engine ──────────────────
-        // When the search bar is empty, every record passes with score = 0
-        // and the tie-breaker sort (_applySort) governs order as usual.
-        // When a query is present, _scoreRecord() assigns relevance points;
-        // records with score === 0 (no field matched) are filtered out, and
-        // results are sorted score-descending before the tie-breaker runs.
-        if (query !== '') {
-            // Score every record in the dropdown-filtered pool
-            const scored = pool
-                .map(item => ({ item, score: _scoreRecord(item, query) }))
-                .filter(entry => entry.score > 0);
-
-            // Primary sort: score descending
-            // Tie-Breaker: _applySort() will govern ordering within same-score
-            // groups — we achieve this with a stable pre-sort on the items
-            // array before injecting scores.
-            _applySort(pool); // stable base order for tie-breaking
-            scored.sort((a, b) => b.score - a.score);
-
-            _filteredData = scored.map(entry => entry.item);
-        } else {
-            // No query — pass all dropdown-filtered records through
-            _filteredData = pool;
-            // ── SORT: Apply active sort mode (rollno / date) ──────────────
-            _applySort(_filteredData);
-        }
+        // ── SORT: Apply active sort mode before feeding the pool ──────────
+        _applySort(_filteredData);
 
         window.currentFilteredDataset = [..._filteredData];
 
@@ -329,59 +307,8 @@ window.DirectoryViewerModule = (function () {
         // and always reset to page 1 on any keystroke/filter change so the
         // user is never left staring at an out-of-bounds empty page.
         _dirFilteredPool = [..._filteredData];
-        _dirCurrentPage = 1;
+        _dirCurrentPage  = 1;
         renderPaginatedDirectory();
-    }
-
-    /**
-     * _scoreRecord
-     * -------------------------------------------------------------------
-     * Field-Weighted Scoring Engine.
-     * Returns a numeric relevance score for a single candidate record
-     * against a lower-cased, trimmed search query string.
-     *
-     * Scoring table:
-     *   +100  Exact match on RL_NO, STUDENT_ID, or STUDENT_MOBILE
-     *   +90   Exact match on STUDENT_NAME
-     *   +80   Starts-with match on RL_NO or STUDENT_ID
-     *   +50   Substring (partial) match on STUDENT_NAME
-     *   +20   Substring match on STUDENT_MOBILE or STUDENT_ID
-     *
-     * A record with score === 0 matched no field and should be excluded.
-     * Scores from multiple matching fields are additive.
-     *
-     * @param {Object} item  — A single candidate record object
-     * @param {string} query — Lower-cased, trimmed search string
-     * @returns {number} Cumulative relevance score (0 = no match)
-     */
-    function _scoreRecord(item, query) {
-        let score = 0;
-
-        const rlNo = item.RL_NO ? String(item.RL_NO).toLowerCase().trim() : '';
-        const id = item.STUDENT_ID ? String(item.STUDENT_ID).toLowerCase().trim() : '';
-        const mobile = item.STUDENT_MOBILE ? String(item.STUDENT_MOBILE).toLowerCase().trim() : '';
-        const name = item.STUDENT_NAME ? item.STUDENT_NAME.toLowerCase().trim() : '';
-
-        // ── Exact matches (+100) ──────────────────────────────────────────
-        if (rlNo === query) score += 100;
-        if (id === query) score += 100;
-        if (mobile === query) score += 100;
-
-        // ── Exact name match (+90) ────────────────────────────────────────
-        if (name === query) score += 90;
-
-        // ── Starts-with match on RL_NO / STUDENT_ID (+80) ────────────────
-        if (rlNo && rlNo.startsWith(query) && rlNo !== query) score += 80;
-        if (id && id.startsWith(query) && id !== query) score += 80;
-
-        // ── Name substring / partial match (+50) ─────────────────────────
-        if (name && name.includes(query) && name !== query) score += 50;
-
-        // ── Partial substring match on mobile / ID (+20) ─────────────────
-        if (mobile && mobile.includes(query) && mobile !== query) score += 20;
-        if (id && id.includes(query) && id !== query && !id.startsWith(query)) score += 20;
-
-        return score;
     }
 
     /**
@@ -435,19 +362,19 @@ window.DirectoryViewerModule = (function () {
      * the currently active sort mode. Safe-fails if the DOM isn't ready.
      */
     function _syncSortToggleUI() {
-        const pill = document.getElementById('dir_sort_pill');
-        const btnRollno = document.getElementById('dir_sort_rollno');
-        const btnDate = document.getElementById('dir_sort_date');
+        const pill       = document.getElementById('dir_sort_pill');
+        const btnRollno  = document.getElementById('dir_sort_rollno');
+        const btnDate    = document.getElementById('dir_sort_date');
         if (!pill || !btnRollno || !btnDate) return;
 
         if (_dirSortMode === 'rollno') {
-            pill.style.transform = 'translateX(0)';
-            btnRollno.style.color = '#ffffff';
-            btnDate.style.color = '#94a3b8'; // slate-400
+            pill.style.transform     = 'translateX(0)';
+            btnRollno.style.color    = '#ffffff';
+            btnDate.style.color      = '#94a3b8'; // slate-400
         } else {
-            pill.style.transform = 'translateX(calc(100% + 4px))';
-            btnDate.style.color = '#ffffff';
-            btnRollno.style.color = '#94a3b8'; // slate-400
+            pill.style.transform     = 'translateX(calc(100% + 4px))';
+            btnDate.style.color      = '#ffffff';
+            btnRollno.style.color    = '#94a3b8'; // slate-400
         }
     }
 
@@ -465,7 +392,7 @@ window.DirectoryViewerModule = (function () {
         triggers.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
-                el.addEventListener('input', applyDirectoryFilters);
+                el.addEventListener('input',  applyDirectoryFilters);
                 el.addEventListener('change', applyDirectoryFilters);
             }
         });
@@ -494,7 +421,7 @@ window.DirectoryViewerModule = (function () {
 
             if (res && res.status === "success" && Array.isArray(res.data)) {
                 _directoryData = res.data;
-                _filteredData = [..._directoryData];
+                _filteredData  = [..._directoryData];
                 window.currentFilteredDataset = [..._filteredData];
 
                 // ⏳ PRIORITY BOOT: Sort chronologically then render page 1
@@ -685,7 +612,7 @@ window.DirectoryViewerModule = (function () {
      * Empty state: renders a "no results" cell and clears the control bar.
      */
     function renderPaginatedDirectory() {
-        const tableBody = document.getElementById('dir_table_body');
+        const tableBody        = document.getElementById('dir_table_body');
         const controlsContainer = document.getElementById('directory_pagination_controls');
         if (!tableBody) return;
 
@@ -694,10 +621,10 @@ window.DirectoryViewerModule = (function () {
 
         // ── Boundary Guards ──────────────────────────────────────────
         if (_dirCurrentPage > totalPages) _dirCurrentPage = totalPages;
-        if (_dirCurrentPage < 1) _dirCurrentPage = 1;
+        if (_dirCurrentPage < 1)          _dirCurrentPage = 1;
 
-        const startIdx = (_dirCurrentPage - 1) * _dirRowsPerPage;
-        const endIdx = Math.min(startIdx + _dirRowsPerPage, totalItems);
+        const startIdx      = (_dirCurrentPage - 1) * _dirRowsPerPage;
+        const endIdx        = Math.min(startIdx + _dirRowsPerPage, totalItems);
         const displayedItems = _dirFilteredPool.slice(startIdx, endIdx);
 
         // ── Empty State ────────────────────────────────────────────
@@ -740,12 +667,12 @@ window.DirectoryViewerModule = (function () {
      */
     function buildPaginationControlsHTML(startIdx, endIdx, totalItems, totalPages) {
         const isFirst = _dirCurrentPage === 1;
-        const isLast = _dirCurrentPage === totalPages;
+        const isLast  = _dirCurrentPage === totalPages;
 
         // Generate numbered page buttons (show up to 5 around current page)
         let pageButtons = '';
         const rangeStart = Math.max(1, _dirCurrentPage - 2);
-        const rangeEnd = Math.min(totalPages, _dirCurrentPage + 2);
+        const rangeEnd   = Math.min(totalPages, _dirCurrentPage + 2);
 
         if (rangeStart > 1) {
             pageButtons += `<button type="button" onclick="window.DirectoryViewerModule.goToPage(1)" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">1</button>`;
@@ -756,7 +683,7 @@ window.DirectoryViewerModule = (function () {
             const isActive = p === _dirCurrentPage;
             pageButtons += `<button type="button" onclick="window.DirectoryViewerModule.goToPage(${p})"
                 class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95
-                ${isActive
+                ${ isActive
                     ? 'bg-brand-500 text-white shadow-sm shadow-brand-500/30'
                     : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }">${p}</button>`;
@@ -785,7 +712,7 @@ window.DirectoryViewerModule = (function () {
             <div class="flex items-center gap-0.5">
                 <!-- Previous -->
                 <button type="button"
-                    ${isFirst ? 'disabled' : ''}
+                    ${ isFirst ? 'disabled' : '' }
                     onclick="window.DirectoryViewerModule.goToPage(${_dirCurrentPage - 1})"
                     class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-35 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all mr-1">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
@@ -797,7 +724,7 @@ window.DirectoryViewerModule = (function () {
 
                 <!-- Next -->
                 <button type="button"
-                    ${isLast ? 'disabled' : ''}
+                    ${ isLast ? 'disabled' : '' }
                     onclick="window.DirectoryViewerModule.goToPage(${_dirCurrentPage + 1})"
                     class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 disabled:opacity-35 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all ml-1">
                     Next
@@ -819,15 +746,11 @@ window.DirectoryViewerModule = (function () {
     /**
      * Routes row data to the PDFGenerator utility for admission form reprint.
      */
-    async function printPDF(index) {
+    function printPDF(index) {
         const rowData = _directoryData[index];
         if (!rowData) return;
-
-        const fullData = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
-        if (!fullData) return;
-
         if (window.PDFGenerator && typeof window.PDFGenerator.createApplicationForm === 'function') {
-            window.PDFGenerator.createApplicationForm(fullData);
+            window.PDFGenerator.createApplicationForm(rowData);
         } else {
             if (window.UIUtils) window.UIUtils.showToast("PDF utility is not loaded.", "error");
         }
@@ -854,7 +777,7 @@ window.DirectoryViewerModule = (function () {
         // Optimistic UI Engine Synchronization
         window.MasterCandidateCache = window.MasterCandidateCache.filter(item => item.STUDENT_ID !== studentId);
         _directoryData = window.MasterCandidateCache; // Sync local reference
-
+        
         // Zero-lag localized layout rendering routine
         applyDirectoryFilters();
 
@@ -866,13 +789,13 @@ window.DirectoryViewerModule = (function () {
             const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({
-                    action: 'DELETE_RECORD',
+                body: JSON.stringify({ 
+                    action: 'DELETE_RECORD', 
                     STUDENT_ID: studentId,
                     token: token
                 })
             });
-
+            
             if (!response.ok) {
                 throw new Error(`Server network failure. Status code: ${response.status}`);
             }
@@ -887,7 +810,7 @@ window.DirectoryViewerModule = (function () {
         } catch (err) {
             console.error("Delete Error:", err);
             if (window.UIUtils) window.UIUtils.showToast("Failed to delete. Reverting UI.", "error");
-
+            
             // Revert state on failure
             window.MasterCandidateCache = backupData;
             _directoryData = backupData;
@@ -932,11 +855,8 @@ window.DirectoryViewerModule = (function () {
      * Mounts a premium, read-only candidate profile dashboard.
      * CORS-Safe: No Drive image streaming. Uses redirect buttons instead.
      */
-    async function viewRecord(index) {
-        const rowData = _directoryData[index];
-        if (!rowData) return;
-
-        const data = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
+    function viewRecord(index) {
+        const data = _directoryData[index];
         if (!data) return;
 
         // --- Raw Drive URLs for redirect buttons (no CORS fetch) ---
@@ -1036,58 +956,58 @@ window.DirectoryViewerModule = (function () {
 
                         <!-- SECTION A: Academic Profile -->
                         ${section('Academic Profile', 'bg-brand-100 dark:bg-brand-900/40 text-brand-600',
-            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"></path></svg>`,
-            field('Enrolled Class', data.ENROLLED_COURSE) +
-            field('Class Batch / Days', data.CLASS_BATCH_DAYS) +
-            field('Academic Session', data.SESSION) +
-            field('Date of Admission', safeDateOfAdmission)
-        )}
+                            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"></path></svg>`,
+                            field('Enrolled Class', data.ENROLLED_COURSE) +
+                            field('Class Batch / Days', data.CLASS_BATCH_DAYS) +
+                            field('Academic Session', data.SESSION) +
+                            field('Date of Admission', safeDateOfAdmission)
+                        )}
 
                         <!-- SECTION B: Personal Information -->
                         ${section('Personal Information', 'bg-violet-100 dark:bg-violet-900/40 text-violet-600',
-            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>`,
-            field('Date of Birth', safeDobView) +
-            field('Gender', data.GENDER) +
-            field('Religion', data.RELIGION) +
-            field('Blood Group', data.BLOOD_GROUP) +
-            field('Category', data.CATEGORY) +
-            field('Aadhaar No.', aadharDisplay) +
-            field('Contact Email', data.CONTACT_EMAIL) +
-            field('Home Address', data.HOME_ADDRESS) +
-            `<div class="col-span-2 flex flex-col gap-0.5">
+                            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>`,
+                            field('Date of Birth', safeDobView) +
+                            field('Gender', data.GENDER) +
+                            field('Religion', data.RELIGION) +
+                            field('Blood Group', data.BLOOD_GROUP) +
+                            field('Category', data.CATEGORY) +
+                            field('Aadhaar No.', aadharDisplay) +
+                            field('Contact Email', data.CONTACT_EMAIL) +
+                            field('Home Address', data.HOME_ADDRESS) +
+                            `<div class="col-span-2 flex flex-col gap-0.5">
                                 <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Physical Disability Notes</span>
                                 <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">${data.PHYSICAL_DISABILITY || '—'}</span>
                             </div>`
-        )}
+                        )}
 
                         <!-- SECTION C: Family & Guardian -->
                         ${section('Family & Guardian', 'bg-amber-100 dark:bg-amber-900/40 text-amber-600',
-            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`,
-            field("Father's Name", data.FATHER_NAME) +
-            field("Father's Mobile", data.FATHER_MOBILE) +
-            field("Mother's Name", data.MOTHER_NAME) +
-            field("Mother's Mobile", data.MOTHER_MOBILE) +
-            field('Guardian Relation', data.GUARDIAN_RELATION) +
-            field('Guardian Name', data.GUARDIAN_NAME) +
-            field('Guardian Mobile', data.GUARDIAN_MOBILE) +
-            ''
-        )}
+                            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`,
+                            field("Father's Name", data.FATHER_NAME) +
+                            field("Father's Mobile", data.FATHER_MOBILE) +
+                            field("Mother's Name", data.MOTHER_NAME) +
+                            field("Mother's Mobile", data.MOTHER_MOBILE) +
+                            field('Guardian Relation', data.GUARDIAN_RELATION) +
+                            field('Guardian Name', data.GUARDIAN_NAME) +
+                            field('Guardian Mobile', data.GUARDIAN_MOBILE) +
+                            ''
+                        )}
 
                         <!-- SECTION D: Administrative & Financial -->
                         ${section('Administrative & Financial', 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600',
-            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>`,
-            field('Payable Amount', data.PAYABLE_AMOUNT ? '₹ ' + data.PAYABLE_AMOUNT : '—') +
-            `<div class="flex flex-col gap-0.5">
+                            `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>`,
+                            field('Payable Amount', data.PAYABLE_AMOUNT ? '₹ ' + data.PAYABLE_AMOUNT : '—') +
+                            `<div class="flex flex-col gap-0.5">
                                 <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Fee Status</span>
                                 <div class="mt-0.5">${feeBadge}</div>
                             </div>` +
-            field('Payment Mode', data.PAYMENT_MODE) +
-            field('Transaction ID', data.TXN_ID) +
-            `<div class="col-span-2 md:col-span-4 flex flex-col gap-0.5">
+                            field('Payment Mode', data.PAYMENT_MODE) +
+                            field('Transaction ID', data.TXN_ID) +
+                            `<div class="col-span-2 md:col-span-4 flex flex-col gap-0.5">
                                 <span class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Admission Timestamp</span>
                                 <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">${safeTimestamp}</span>
                             </div>`
-        )}
+                        )}
 
                         <!-- DECLARATION BLOCK -->
                         <div class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
@@ -1132,11 +1052,8 @@ window.DirectoryViewerModule = (function () {
      * session split, Aadhaar masking, and Base64 media upload fields.
      * Excludes financial/fee and declaration fields from editing.
      */
-    async function editRecord(index) {
-        const rowData = _directoryData[index];
-        if (!rowData) return;
-
-        const data = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
+    function editRecord(index) {
+        const data = _directoryData[index];
         if (!data) return;
 
         // Reset temporary state
@@ -1541,13 +1458,13 @@ window.DirectoryViewerModule = (function () {
 
         // CSV Headers
         const headers = [
-            "ID",
-            "Roll No",
-            "Candidate Name",
-            "Enrolled Class",
-            "Class Batch / Days",
-            "Academic Session",
-            "Gender",
+            "ID", 
+            "Roll No", 
+            "Candidate Name", 
+            "Enrolled Class", 
+            "Class Batch / Days", 
+            "Academic Session", 
+            "Gender", 
             "Date of Admission"
         ];
 
@@ -1557,7 +1474,7 @@ window.DirectoryViewerModule = (function () {
 
         dataset.forEach(row => {
             // Clean Date Sanitization
-            const cleanDate = window.UIUtils && window.UIUtils.cleanDateTimeString
+            const cleanDate = window.UIUtils && window.UIUtils.cleanDateTimeString 
                 ? window.UIUtils.cleanDateTimeString(row.DATE_OF_ADMISSION)
                 : row.DATE_OF_ADMISSION;
 
@@ -1584,13 +1501,13 @@ window.DirectoryViewerModule = (function () {
         const csvString = csvRows.join("\n");
         const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
-
+        
         const a = document.createElement("a");
         a.href = url;
         a.setAttribute("download", `BYTC_Directory_${new Date().toISOString().split('T')[0]}.csv`);
         document.body.appendChild(a);
         a.click();
-
+        
         // Instant Download Lifecycle cleanup
         document.body.removeChild(a);
         URL.revokeObjectURL(url);

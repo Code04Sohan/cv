@@ -205,7 +205,7 @@ window.PaymentCollectorModule = (function () {
 
         // Handle pending cross-module navigation (from directory viewer "Pay Fees" button)
         if (_pendingCandidate) {
-            await selectCandidate(_pendingCandidate);
+            selectCandidate(_pendingCandidate);
             _pendingCandidate = null;
         }
     }
@@ -438,10 +438,10 @@ window.PaymentCollectorModule = (function () {
     /**
      * Selects a candidate from the autocomplete dropdown by cache index.
      */
-    async function selectCandidateByIndex(index) {
+    function selectCandidateByIndex(index) {
         var cache = window.MasterCandidateCache || [];
         if (index >= 0 && index < cache.length) {
-            await selectCandidate(cache[index]);
+            selectCandidate(cache[index]);
         }
     }
 
@@ -449,12 +449,8 @@ window.PaymentCollectorModule = (function () {
      * Binds a candidate's properties into the module's tracking variables and updates the UI.
      * @param {Object} candidate - Full candidate record object from MasterCandidateCache
      */
-    async function selectCandidate(candidate) {
+    function selectCandidate(candidate) {
         if (!candidate) return;
-        
-        const fullData = await window.UIUtils.fetchSingleStudentData(candidate.STUDENT_ID);
-        if (!fullData) return;
-        candidate = fullData; // Upgrade from minimal to full record for hydration
 
         _selectedCandidate = candidate;
         _mergedLogs = [];
@@ -474,16 +470,8 @@ window.PaymentCollectorModule = (function () {
         if (cardEmpty) cardEmpty.classList.add('hidden');
         if (cardData) cardData.classList.remove('hidden');
 
-        var avatarContainer = document.getElementById('lbl_pc_avatar');
-        if (avatarContainer) {
-            if (candidate.STUDENT_PHOTO_URL && candidate.STUDENT_PHOTO_URL.trim() !== '') {
-                avatarContainer.innerHTML = `<img src="${candidate.STUDENT_PHOTO_URL}" class="w-full h-full object-cover rounded-xl border border-slate-200/60 dark:border-slate-800" />`;
-            } else {
-                var initial = candidate.STUDENT_NAME ? candidate.STUDENT_NAME.charAt(0).toUpperCase() : '?';
-                avatarContainer.textContent = initial;
-            }
-        }
-        
+        var initial = candidate.STUDENT_NAME ? candidate.STUDENT_NAME.charAt(0).toUpperCase() : '?';
+        setTextById('lbl_pc_avatar', initial);
         setTextById('lbl_pc_name', candidate.STUDENT_NAME || '—');
         setTextById('lbl_pc_id', candidate.STUDENT_ID || '—');
         setTextById('lbl_pc_roll', candidate.RL_NO || '—');
@@ -1062,17 +1050,7 @@ window.PaymentCollectorModule = (function () {
         var submitBtn = document.getElementById('collectorSubmitBtn');
         var spinner = document.getElementById('collectorSubmitSpinner');
 
-        // ── BUTTON LOCK: Save original state, lock and update text ─────────
-        var originalBtnHTML = submitBtn ? submitBtn.innerHTML : '';
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = `
-                <span class="uppercase tracking-wider text-[11px] font-black">Processing...</span>
-                <svg class="animate-spin w-4 h-4 text-white opacity-70" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>`;
-        }
+        if (submitBtn) submitBtn.disabled = true;
         if (spinner) spinner.classList.remove('hidden');
 
         try {
@@ -1164,12 +1142,7 @@ window.PaymentCollectorModule = (function () {
             console.error('[PaymentCollector] Submit error:', err);
             if (window.UIUtils) window.UIUtils.showToast('Payment submission failed: ' + err.message, 'error');
         } finally {
-            // ── BUTTON UNLOCK: Always restore button state regardless of outcome ─
             _isProcessing = false;
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalBtnHTML;
-            }
             if (spinner) spinner.classList.add('hidden');
             updateCheckoutTotal();
         }
@@ -1284,7 +1257,7 @@ window.PaymentCollectorModule = (function () {
         // If already mounted (navigateTo was a no-op because module was active),
         // apply the selection immediately since mount() won't run again
         if (_pendingCandidate && document.getElementById('collectorSearchInput')) {
-            await selectCandidate(_pendingCandidate);
+            selectCandidate(_pendingCandidate);
             _pendingCandidate = null;
         }
     }

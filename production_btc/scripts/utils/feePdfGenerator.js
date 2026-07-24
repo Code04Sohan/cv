@@ -41,29 +41,17 @@ window.FeePDFGeneratorModule = (function () {
     // 🎨 BRAND COLOR CONSTANTS (jsPDF RGB triplets)
     // =========================================
     const C = {
-
-        TEAL_DARK: [15, 118, 110],  // #0f766e — primary brand
-
-        SLATE_900: [15, 23, 42],  // #0f172a
-
-        SLATE_700: [51, 65, 85],  // #334155
-
-        SLATE_500: [100, 116, 139],  // #64748b
-
-        SLATE_300: [203, 213, 225],  // #cbd5e1
-
-        SLATE_100: [241, 245, 249],  // #f1f5f9
-
-        WHITE: [255, 255, 255],
-
-        EMERALD: [16, 185, 129],  // #10b981
-
-        INDIGO: [67, 56, 202],  // #4338ca
-
-        GREEN_BG: [240, 253, 244],  // #f0fdf4
-
+        TEAL_DARK:  [15,  118, 110],  // #0f766e — primary brand
+        SLATE_900:  [15,   23,  42],  // #0f172a
+        SLATE_700:  [51,   65,  85],  // #334155
+        SLATE_500:  [100, 116, 139],  // #64748b
+        SLATE_300:  [203, 213, 225],  // #cbd5e1
+        SLATE_100:  [241, 245, 249],  // #f1f5f9
+        WHITE:      [255, 255, 255],
+        EMERALD:    [16,  185, 129],  // #10b981
+        INDIGO:     [67,   56, 202],  // #4338ca
+        GREEN_BG:   [240, 253, 244],  // #f0fdf4
         HEADER_SUB: [180, 230, 225],  // light teal for header subtext
-
     };
 
     // =========================================
@@ -87,395 +75,205 @@ window.FeePDFGeneratorModule = (function () {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('p', 'mm', 'a4');
 
-        const PW = 210;           // A4 page width mm
-        const PH = 297;           // A4 page height mm
-        const MARGIN = 14;
-        const CW = PW - MARGIN * 2;
-        let Y = MARGIN;
+        const PW     = 210;           // A4 page width mm
+        const MARGIN = 15;
+        const CW     = PW - MARGIN * 2;
+        let   Y      = MARGIN;
 
         // ── Shorthand helpers ───────────────────────────────────────────
-        const tc = (rgb) => doc.setTextColor(rgb[0], rgb[1], rgb[2]);
-        const fc = (rgb) => doc.setFillColor(rgb[0], rgb[1], rgb[2]);
-        const dc = (rgb) => doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
-        const ln = (x1, y1, x2, y2) => doc.line(x1, y1, x2, y2);
-        const bx = (x, y, w, h, style) => doc.rect(x, y, w, h, style);
-        const tx = (str, x, y, o) => doc.text(String(str || ''), x, y, o || {});
-        const ph = doc.internal.pageSize.height;
+        const tc  = (rgb)            => doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+        const fc  = (rgb)            => doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        const dc  = (rgb)            => doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+        const ln  = (x1,y1,x2,y2)   => doc.line(x1, y1, x2, y2);
+        const bx  = (x,y,w,h,style) => doc.rect(x, y, w, h, style);
+        const tx  = (str, x, y, o)  => doc.text(String(str || ''), x, y, o || {});
+        const ph  = doc.internal.pageSize.height;
 
-        // ── Resolved data values ────────────────────────────────────────
-        const now = new Date();
-        const dateString = now.toLocaleDateString('en-IN', {
-            day: 'numeric', month: 'short', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-        const amountDisplay = Number(summaryData.amount || 0).toLocaleString('en-IN');
-        const txnId = summaryData.txnId || 'N/A';
-        const feePeriods = summaryData.feePeriods || 'N/A';
-        const paymentDate = student.TIMESTAMP || dateString;
-
-        // ══════════════════════════════════════════════════════════════════
-        // 1. CENTER HEADER BLOCK
-        // ══════════════════════════════════════════════════════════════════
-        const HEADER_H = 48;
+        // ── 1. HEADER BAND ─────────────────────────────────────────────
         fc(C.TEAL_DARK);
-        bx(0, 0, PW, HEADER_H, 'F');
+        bx(0, 0, PW, 33, 'F');
 
-        // Institution name
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
+        doc.setFontSize(17);
         tc(C.WHITE);
         tx('BABLA YOGA TRAINING CENTER', PW / 2, Y + 9, { align: 'center' });
 
-        // Sub-detail lines
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
+        doc.setFontSize(8);
         tc(C.HEADER_SUB);
-        tx('Govt. Regd. No. S0032148 of 2021-2022  |  Estd: 2015', PW / 2, Y + 16, { align: 'center' });
-        tx('Address: Jagriti More, Maynaguri, Jalpaiguri, West Bengal, Pin-735224', PW / 2, Y + 21.5, { align: 'center' });
-        tx('Email: bablayogatrainingcenter@gmail.com', PW / 2, Y + 27, { align: 'center' });
-        tx('Cont. 7076280550 (Call/Wp)  |  8597125683 (Call)', PW / 2, Y + 32.5, { align: 'center' });
+        tx('Govt. Regd. No. S0032148 of 2021-2022 | Estd: 2015', PW / 2, Y + 15, { align: 'center' });
+        tx('Jagriti More, Maynaguri, Jalpaiguri, West Bengal - Pin 735224', PW / 2, Y + 20, { align: 'center' });
+        tx('Email: bablayogatrainingcenter@gmail.com  |  Cont: 7076280550 / 8158027894', PW / 2, Y + 26, { align: 'center' });
 
-        Y = HEADER_H + 5;
+        Y = 39;
 
-        // ══════════════════════════════════════════════════════════════════
-        // 2. DOCUMENT TITLE BADGE
-        // ══════════════════════════════════════════════════════════════════
+        // ── 2. RECEIPT TITLE BADGE ─────────────────────────────────────
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
         fc(C.GREEN_BG);
         dc(C.TEAL_DARK);
         doc.setLineWidth(0.5);
         bx(MARGIN, Y, CW, 10, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10.5);
         tc(C.TEAL_DARK);
         tx('OFFICIAL FEE PAYMENT RECEIPT', PW / 2, Y + 6.8, { align: 'center' });
 
-        Y += 14;
+        Y += 15;
 
-        // ══════════════════════════════════════════════════════════════════
-        // 3. RECEIPT META BAR  (TXN ID — left  |  Generated date — right)
-        // ══════════════════════════════════════════════════════════════════
+        // ── 3. RECEIPT DATE (right-aligned) ────────────────────────────
+        const dateString = new Date().toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        tc(C.SLATE_500);
+        tx('Receipt Generated: ' + dateString, PW - MARGIN, Y, { align: 'right' });
+
+        Y += 6;
+
+        // ── 4. STUDENT & TRANSACTION DETAILS GRID ─────────────────────
+        const COL1_LX = MARGIN + 2;
+        const COL1_VX = MARGIN + 38;
+        const COL2_LX = PW / 2 + 2;
+        const COL2_VX = PW / 2 + 40;
+        const ROW_H   = 8;
+        const GRID_H  = ROW_H * 4 + 4;
+
         fc(C.SLATE_100);
         dc(C.SLATE_300);
-        doc.setLineWidth(0.2);
-        bx(MARGIN, Y, CW, 8, 'FD');
+        doc.setLineWidth(0.3);
+        bx(MARGIN, Y, CW, GRID_H, 'FD');
 
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        tc(C.SLATE_500);
-        tx('Transaction ID:', MARGIN + 3, Y + 5.2);
-        doc.setFont('helvetica', 'bold');
-        tc(C.INDIGO);
-        tx(txnId, MARGIN + 29, Y + 5.2);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
-        tc(C.SLATE_500);
-        tx('Receipt Generated: ' + dateString, PW - MARGIN - 2, Y + 5.2, { align: 'right' });
-
-        Y += 12;
-
-        // ══════════════════════════════════════════════════════════════════
-        // 4. CANDIDATE DETAILS GRID  (2-column, 3-row card layout)
-        // ══════════════════════════════════════════════════════════════════
-        const DETAIL_SECTION_LABEL_Y = Y;
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        tc(C.TEAL_DARK);
-        tx('CANDIDATE DETAILS', MARGIN, Y + 4);
-
-        // Horizontal rule below section heading
-        dc(C.TEAL_DARK);
-        doc.setLineWidth(0.4);
-        ln(MARGIN, Y + 6, PW - MARGIN, Y + 6);
-
-        Y += 10;
-
-        const COL_W = CW / 2 - 2;
-        const ROW_GAP = 11;
-
-        const detailFields = [
-            { label: 'Student Name', value: student.STUDENT_NAME || 'N/A' },
-            { label: 'Student ID', value: student.STUDENT_ID || 'N/A' },
-            { label: 'Roll Number', value: String(student.RL_NO || 'N/A') },
-            { label: 'Class / Batch', value: student.CLASS_BATCH_DAYS || student.ENROLLED_COURSE || 'N/A' },
-            { label: 'Transaction ID', value: txnId, highlight: true },
-            { label: 'Payment Date', value: paymentDate },
+        const detailRows = [
+            { l1: 'Student Name',   v1: student.STUDENT_NAME    || 'N/A', l2: 'Transaction ID', v2: summaryData.txnId || 'N/A', v1teal: true,   v2indigo: true },
+            { l1: 'Student ID',     v1: student.STUDENT_ID      || 'N/A', l2: 'Payment Date',   v2: dateString,                v1teal: false,  v2indigo: false },
+            { l1: 'Roll Number',    v1: student.RL_NO           || 'N/A', l2: 'Class / Batch',  v2: student.ENROLLED_COURSE || 'N/A', v1teal: false, v2indigo: false },
+            { l1: 'Payment Status', v1: 'SUCCESSFUL / PAID',               l2: '',               v2: '',                        v1emerald: true },
         ];
 
-        detailFields.forEach(function (field, idx) {
-            const col = idx % 2;
-            const row = Math.floor(idx / 2);
-            const fx = MARGIN + col * (COL_W + 4);
-            const fy = Y + row * ROW_GAP;
-
-            // Card pill background
-            if (field.highlight) {
-                fc(C.GREEN_BG);
-                dc(C.TEAL_DARK);
-                doc.setLineWidth(0.2);
-                bx(fx, fy - 3, COL_W, 9, 'FD');
-            } else {
-                fc(C.SLATE_100);
+        let rowY = Y + ROW_H - 1.5;
+        detailRows.forEach(function(row, idx) {
+            if (idx > 0) {
                 dc(C.SLATE_300);
                 doc.setLineWidth(0.2);
-                bx(fx, fy - 3, COL_W, 9, 'FD');
+                ln(MARGIN, rowY - ROW_H + 1.5, MARGIN + CW, rowY - ROW_H + 1.5);
             }
 
-            // Label
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(6.5);
-            tc(C.SLATE_500);
-            tx(field.label + ':', fx + 3, fy + 0.5);
-
-            // Value
+            // Label 1
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(8.5);
-            tc(field.highlight ? C.TEAL_DARK : C.SLATE_900);
-            // Truncate long values to prevent overflow
-            const maxW = COL_W - 6;
-            const valLines = doc.splitTextToSize(field.value, maxW);
-            tx(valLines[0], fx + 3, fy + 5.5); // Single line only for grid cells
+            doc.setFontSize(7.5);
+            tc(C.SLATE_500);
+            tx(row.l1 + ':', COL1_LX, rowY);
+
+            // Value 1
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(row.l1 === 'Student Name' ? 10 : 9);
+            tc(row.v1emerald ? C.EMERALD : row.v1teal ? C.TEAL_DARK : C.SLATE_900);
+            tx(row.v1, COL1_VX, rowY);
+
+            // Label 2
+            if (row.l2) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(7.5);
+                tc(C.SLATE_500);
+                tx(row.l2 + ':', COL2_LX, rowY);
+
+                // Value 2
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                tc(row.v2indigo ? C.INDIGO : C.SLATE_900);
+                tx(row.v2, COL2_VX, rowY);
+            }
+
+            rowY += ROW_H;
         });
 
-        Y += Math.ceil(detailFields.length / 2) * ROW_GAP + 8;
+        Y += GRID_H + 8;
 
-        // ══════════════════════════════════════════════════════════════════
-        // 5. BILLING DESCRIPTION TABLE
-        // ══════════════════════════════════════════════════════════════════
-        // — Section heading
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        tc(C.TEAL_DARK);
-        tx('BILLING SUMMARY', MARGIN, Y + 4);
-        dc(C.TEAL_DARK);
-        doc.setLineWidth(0.4);
-        ln(MARGIN, Y + 6, PW - MARGIN, Y + 6);
+        // ── 5. BILLING LINE ITEM TABLE ─────────────────────────────────
+        const amountDisplay = Number(summaryData.amount || 0).toLocaleString('en-IN');
+        const TABLE_H       = 10;
 
-        Y += 10;
-
-        // — Table header row
+        // Header row
         fc(C.TEAL_DARK);
-        bx(MARGIN, Y, CW, 9, 'F');
+        dc(C.TEAL_DARK);
+        doc.setLineWidth(0.3);
+        bx(MARGIN, Y, CW, TABLE_H, 'F');
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
+        doc.setFontSize(8.5);
         tc(C.WHITE);
-        tx('Item / Billing Description', MARGIN + 4, Y + 6);
-        tx('Period', MARGIN + 108, Y + 6);
-        tx('Amount (\u20B9)', PW - MARGIN - 2, Y + 6, { align: 'right' });
+        tx('BILLING LEDGER ITEM DESCRIPTION', MARGIN + 4, Y + 6.8);
+        tx('AMOUNT (INR)', PW - MARGIN - 2, Y + 6.8, { align: 'right' });
 
-        Y += 9;
+        Y += TABLE_H;
 
-        // — Item row
+        // Item row — white background with border
         fc(C.WHITE);
         dc(C.SLATE_300);
-        doc.setLineWidth(0.25);
-        bx(MARGIN, Y, CW, 16, 'FD');
-
-        // Vertical dividers
-        doc.setLineWidth(0.2);
-        ln(MARGIN + 104, Y, MARGIN + 104, Y + 16); // col 1 | col 2 divider
-        ln(MARGIN + 148, Y, MARGIN + 148, Y + 16); // col 2 | col 3 divider
+        doc.setLineWidth(0.3);
+        bx(MARGIN, Y, CW, 15, 'FD');
 
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.5);
+        doc.setFontSize(9);
         tc(C.SLATE_700);
-        tx('Tuition Fees Settled', MARGIN + 4, Y + 6.5);
+        tx('Tuition Fees Settled for Billing Period(s):', MARGIN + 4, Y + 6);
 
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
-        tc(C.SLATE_500);
-        tx('(Academic fee payment collected in full)', MARGIN + 4, Y + 12);
-
-        // Period
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
         tc(C.TEAL_DARK);
-        const periodLines = doc.splitTextToSize(feePeriods, 42);
-        doc.text(periodLines.slice(0, 2), MARGIN + 107, Y + 6.5);
+        // Wrap fee periods if too long
+        const periodLines = doc.splitTextToSize(summaryData.feePeriods || 'N/A', CW - 50);
+        doc.text(periodLines, MARGIN + 4, Y + 11);
 
-        // Amount
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9.5);
+        doc.setFontSize(10);
         tc(C.SLATE_900);
-        tx(amountDisplay + ' /-', PW - MARGIN - 2, Y + 9, { align: 'right' });
+        tx('\u20B9 ' + amountDisplay + '.00', PW - MARGIN - 2, Y + 9, { align: 'right' });
 
-        Y += 16;
+        Y += 15;
 
-        // — Total Amount Paid (highlighted grand-total row)
+        // Grand total row
         fc(C.GREEN_BG);
         dc(C.TEAL_DARK);
-        doc.setLineWidth(0.6);
+        doc.setLineWidth(0.7);
         bx(MARGIN, Y, CW, 12, 'FD');
+
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
+        doc.setFontSize(9);
         tc(C.TEAL_DARK);
-        tx('TOTAL AMOUNT PAID', MARGIN + 4, Y + 7.8);
+        tx('Net Settled Balance:', PW - MARGIN - 45, Y + 7.5);
+
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(12);
-        tx(amountDisplay + ' /-', PW - MARGIN - 2, Y + 8.5, { align: 'right' });
-
-        Y += 16;
-
-        // ══════════════════════════════════════════════════════════════════
-        // 6. TERMS AND CONDITIONS
-        // ══════════════════════════════════════════════════════════════════
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        tc(C.TEAL_DARK);
-        tx('TERMS & CONDITIONS', MARGIN, Y + 4);
-        dc(C.SLATE_300);
-        doc.setLineWidth(0.2);
-        ln(MARGIN, Y + 5.5, PW - MARGIN, Y + 5.5);
-
-        Y += 8;
-
-        const terms = [
-            '1. This receipt confirms payment received by Babla Yoga Training Center. Fees are non-refundable once submitted.',
-            '2. This document serves as official proof of payment and is subject to center guidelines and policies.',
-            '3. Any disputes must be raised within 7 days of the payment date with a valid proof of transaction.',
-        ];
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        tc(C.SLATE_500);
-        terms.forEach(function (line) {
-            const wrapped = doc.splitTextToSize(line, CW);
-            doc.text(wrapped, MARGIN, Y);
-            Y += wrapped.length * 4;
-        });
-
-        Y += 4;
-
-        // ══════════════════════════════════════════════════════════════════
-        // 7. NOTE SECTION (Administrator Notes Placeholder)
-        // ══════════════════════════════════════════════════════════════════
-        fc(C.SLATE_100);
-        dc(C.SLATE_300);
-        doc.setLineWidth(0.2);
-        bx(MARGIN, Y, CW, 14, 'FD');
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        tc(C.SLATE_500);
-        tx('Note:', MARGIN + 3, Y + 5.5);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
-        tc(C.SLATE_500);
-        tx('No additional administrator notes for this transaction.', MARGIN + 14, Y + 5.5);
-        doc.setFontSize(7);
-        tx('(This field is reserved for optional remarks by the issuing authority.)', MARGIN + 3, Y + 10.5);
+        tx('\u20B9 ' + amountDisplay + '.00', PW - MARGIN - 2, Y + 8, { align: 'right' });
 
         Y += 18;
 
-        // ══════════════════════════════════════════════════════════════════
-        // 8. PAYMENT VERIFIED STAMP BADGE
-        // ══════════════════════════════════════════════════════════════════
-        fc([220, 252, 231]);  // #dcfce7
-        dc([134, 239, 172]);  // #86efac
+        // ── 6. VERIFIED PAYMENT STAMP ──────────────────────────────────
+        fc([220, 252, 231]); // #dcfce7
+        dc([134, 239, 172]); // #86efac
         doc.setLineWidth(0.4);
-        bx(MARGIN, Y, 96, 9, 'FD');
+        bx(MARGIN, Y, 84, 9, 'FD');
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        tc([21, 128, 61]);    // #15803d
-        tx('Payment Verified & Recorded', MARGIN + 4, Y + 6.2);
+        doc.setFontSize(8.5);
+        tc([21, 128, 61]); // #15803d
+        tx('\u2705 Payment Verified & Recorded', MARGIN + 4, Y + 6);
 
-        Y += 13;
-
-        // ══════════════════════════════════════════════════════════════════
-        // 9. AUTHORIZATION BLOCK (Signature + Date)
-        // ══════════════════════════════════════════════════════════════════
-        const SIG_BLOCK_X = PW - MARGIN - 70;
-        const SIG_BLOCK_W = 70;
-        const SIG_BLOCK_H = 28;
-
-        fc(C.SLATE_100);
-        dc(C.SLATE_300);
-        doc.setLineWidth(0.2);
-        bx(SIG_BLOCK_X, Y, SIG_BLOCK_W, SIG_BLOCK_H, 'FD');
-
-        // Try to embed the owner signature image
-        const sigUrl = (window.SystemConfig && window.SystemConfig.OWNER_SIGNATURE_URL) || '';
-        let sigEmbedded = false;
-
-        if (sigUrl && sigUrl.trim() !== '') {
-            try {
-                // addImage accepts data URIs, URL strings (same-origin), or ArrayBuffers.
-                // For external URLs we attempt CORS load; if it throws we fall through
-                // to the safe styled-line fallback below.
-                doc.addImage(sigUrl, 'PNG', SIG_BLOCK_X + 5, Y + 2, 60, 16);
-                sigEmbedded = true;
-            } catch (imgErr) {
-                // Image failed to load — safe fallback will render below
-                console.warn('[FeePDFGeneratorModule] Signature image could not be embedded:', imgErr.message);
-            }
-        }
-
-        if (!sigEmbedded) {
-            // Styled signature line fallback
-            dc(C.SLATE_700);
-            doc.setLineWidth(0.4);
-            doc.setLineDash([1, 1]);
-            ln(SIG_BLOCK_X + 8, Y + 18, SIG_BLOCK_X + 62, Y + 18);
-            doc.setLineDash([]);
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(7);
-            tc(C.SLATE_500);
-            tx('Authorized Signatory', SIG_BLOCK_X + SIG_BLOCK_W / 2, Y + 15, { align: 'center' });
-        }
-
-        // Signatory labels below the image / line
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7);
-        tc(C.SLATE_700);
-        tx('Authorized Signatory', SIG_BLOCK_X + SIG_BLOCK_W / 2, Y + 22, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6.5);
-        tc(C.SLATE_500);
-        tx('Babla Yoga Training Center', SIG_BLOCK_X + SIG_BLOCK_W / 2, Y + 26.5, { align: 'center' });
-
-        // Verification date — left side of the authorization row
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        tc(C.SLATE_500);
-        tx('Verified On:', MARGIN, Y + 12);
-        doc.setFont('helvetica', 'bold');
-        tc(C.SLATE_700);
-        tx(dateString, MARGIN, Y + 17);
-
-        Y = Math.max(Y + SIG_BLOCK_H + 6, Y + 40);
-
-        // ══════════════════════════════════════════════════════════════════
-        // 10. FOOTER
-        // ══════════════════════════════════════════════════════════════════
-        const FOOTER_TOP = ph - 26;
-
+        // ── 7. FOOTER ──────────────────────────────────────────────────
         dc(C.SLATE_300);
         doc.setLineWidth(0.3);
         doc.setLineDash([2, 2]);
-        ln(MARGIN, FOOTER_TOP, PW - MARGIN, FOOTER_TOP);
+        ln(MARGIN, ph - 22, PW - MARGIN, ph - 22);
         doc.setLineDash([]);
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         tc(C.SLATE_500);
-        tx(
-            'This is an electronically generated receipt verified at application checkout.',
-            PW / 2, FOOTER_TOP + 5, { align: 'center' }
-        );
-        tx(
-            'Babla Yoga Training Center  \u00B7  Jagriti More, Maynaguri, Jalpaiguri  \u00B7  Pin-735224',
-            PW / 2, FOOTER_TOP + 10, { align: 'center' }
-        );
+        tx('This is an electronically generated receipt verified at application checkout.', PW / 2, ph - 17, { align: 'center' });
+        tx('Babla Yoga Training Center \u00B7 Jagriti More, Maynaguri, Jalpaiguri \u00B7 Pin-735224', PW / 2, ph - 12, { align: 'center' });
+
         doc.setFont('helvetica', 'bold');
         tc(C.TEAL_DARK);
-        tx('Thank you for joining with us!', PW / 2, FOOTER_TOP + 16, { align: 'center' });
-
-        // ── Subtle developer credit ────────────────────────────────────
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(6);
-        tc(C.SLATE_300);
-        tx(
-            'This ERP is designed and engineered by Sohan Adhikari  |  dev contact - sohanadhikari04@gmail.com',
-            PW / 2, ph - 3, { align: 'center' }
-        );
+        tx('Thank you for studying with us!', PW / 2, ph - 7, { align: 'center' });
 
         return doc;
     }
@@ -535,7 +333,7 @@ window.FeePDFGeneratorModule = (function () {
             }
 
             const safeName = (student.STUDENT_NAME || 'Student').replace(/[^a-zA-Z0-9]/g, '_');
-            const safeTxn = (summaryData.txnId || 'BYTC').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const safeTxn  = (summaryData.txnId || 'BYTC').replace(/[^a-zA-Z0-9_-]/g, '_');
             doc.save('Fee_Receipt_' + safeName + '_' + safeTxn + '.pdf');
 
             if (window.UIUtils) window.UIUtils.showToast('\u{1F4E5} PDF receipt downloaded.', 'success');
