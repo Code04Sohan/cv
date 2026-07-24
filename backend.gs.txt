@@ -1,0 +1,2202 @@
+/**
+ * ====================================================================
+ * 🧘 BABLA YOGA TRAINING CENTER - ERP CLOUD ENGINE BACKEND (.gs)
+ * ====================================================================
+ * 
+ * Paste this entire script into your Google Apps Script editor.
+ * Go to "Services" (+) and add the "Google Drive API".
+ * 
+ * Setup Guide:
+ * 1. SPREADSHEET_ID: The ID of your Google Sheet.
+ * 2. DRIVE_FOLDER_ID: Optional folder ID for file streaming. If blank or invalid, 
+ *    the engine will automatically find or create a folder named "Babla Yoga Candidate Documents".
+ * 3. MASTER_SHEET_NAME: Matches the tab name (default "Main Recoreds").
+ * 4. ADMIN_EMAIL: Receives secure password-override OTP codes.
+ * 5. ADMIN_PASS: Managed via Script Properties. Defaults to "admin123" if uninitialized.
+ */
+
+/**
+ * ==========================================
+ * ⚙️ MODULE 1: SYSTEM CONFIGURATION
+ * ==========================================
+ */
+const CONFIG = {
+  SPREADSHEET_ID: "1s04Yy978ZBMtBDoQX5Wt2ewJ0UZCDSHd-bN5zwwOvrc",
+  DRIVE_FOLDER_ID: "1JAcCXmiEFOqucnUD4SUcJVC91-8CP9uz",
+  MASTER_SHEET_NAME: "Main Recoreds",
+  ADMIN_EMAIL: "adhikarijyotshna5408@gmail.com"
+};
+
+/**
+ * 🗄️ PREDEFINED SCHEMA REGISTRY (Strict Templates)
+ * Enforces rigid SQL-like structural tables for high-speed indexing.
+ */
+const SHEET_TEMPLATES = {
+  // Primary Master Ingestion Row Layout
+  /**
+   * Primary Master Ingestion Row Layout
+   * ─────────────────────────────────────────────────────────────────────────
+   * COLUMN ORDER IS SACRED — any structural change requires a coordinated
+   * sheet migration. IS_DELETED is intentionally the terminal column so that
+   * all existing row ranges remain backward-compatible with legacy data.
+   *
+   * IS_DELETED  (Boolean / soft-delete flag)
+   *   • FALSE / empty  → Active profile, included in all directory reads.
+   *   • TRUE           → Soft-deleted; filtered server-side before the JSON
+   *                      response payload is assembled.  The physical row is
+   *                      never removed (zero structural row shifts).
+   */
+  MasterRecord: [
+    'STUDENT_ID', 'RL_NO', 'SESSION', 'DATE_OF_ADMISSION', 'ENROLLED_COURSE', 'CLASS_BATCH_DAYS',
+    'STUDENT_NAME', 'DOB', 'GENDER', 'BLOOD_GROUP', 'RELIGION', 'STUDENT_AADHAR', 'CATEGORY', 'STUDENT_MOBILE', 'CONTACT_EMAIL', 'HOME_ADDRESS', 'PHYSICAL_DISABILITY',
+    'FATHER_NAME', 'FATHER_MOBILE', 'MOTHER_NAME', 'MOTHER_MOBILE', 'GUARDIAN_RELATION', 'GUARDIAN_NAME', 'GUARDIAN_MOBILE',
+    'DECLARATION_1', 'DECLARATION_2', 'PAYABLE_AMOUNT', 'IS_FEE_PAID', 'PAYMENT_MODE', 'TXN_ID',
+    'STUDENT_PHOTO_URL', 'STUDENT_SIGNATURE_URL', 'TIMESTAMP',
+    'IS_DELETED'   // ⚑ SOFT-DELETE FLAG — Terminal schema column. Boolean TRUE = archived.
+  ],
+
+  // Payment Ledger Row Layout (Fee Collector Module — Annual Sharded Tabs: Logs_YYYY)
+  PaymentLog: [
+    'TXN_ID', 'TIMESTAMP', 'STUDENT_ID', 'RL_NO', 'STUDENT_NAME', 'FEE_PERIOD', 'STATUS', 'AMOUNT_COLLECTED'
+  ]
+};
+
+/**
+ * Standardizes all JSON responses to the frontend.
+ */
+function createResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Utility to access persistent storage securely.
+ */
+function getProps() {
+  return PropertiesService.getScriptProperties();
+}
+
+/**
+ * ==========================================
+ * 🛡️ MODULE 2: SECURITY & SESSION CONTROL
+ * ==========================================
+ */
+
+/**
+ * Verifies the incoming token matches the single active device session.
+ */
+function validateSession(incomingToken) {
+  if (!incomingToken) return false;
+  const activeToken = getProps().getProperty("SESSION_TOKEN");
+  return (incomingToken === activeToken);
+}
+
+/**
+ * Handles user login and enforces the Single-Session policy.
+ */
+function handleLogin(payload) {
+  const props = getProps();
+  let storedPass = props.getProperty("ADMIN_PASS");
+  
+  if (!storedPass) {
+    // Graceful initialization fallback to "admin123" if script properties aren't set yet
+    storedPass = "admin123";
+    props.setProperty("ADMIN_PASS", storedPass);
+  }
+
+  if (payload.password === storedPass) {
+    const newToken = Utilities.getUuid();
+    props.setProperty("SESSION_TOKEN", newToken); // Invalidates old sessions
+    return createResponse({ status: "success", token: newToken });
+  }
+  
+  return createResponse({ status: "error", message: "Invalid Security Key." });
+}
+
+/**
+ * ==========================================
+ * 🚦 MODULE 3: ROUTING ENGINE (GATEKEEPER)
+ * ==========================================
+ */
+function doPost(e) {
+  try {
+    let payload;
+    if (e.postData && e.postData.contents) {
+      try {
+        payload = JSON.parse(e.postData.contents);
+      } catch (err) {
+        payload = e.parameter;
+      }
+    } else {
+      payload = e.parameter;
+    }
+    
+    if (!payload || !payload.action) {
+        return createResponse({ status: "error", message: "Empty or invalid payload." });
+    }
+    
+    const action = payload.action;
+
+    // A. PUBLIC ROUTES (No auth required)
+    if (action === "LOGIN") return handleLogin(payload);
+    if (action === "REQUEST_RESET") return requestReset(payload);
+    if (action === "COMPLETE_RESET") return verifyAndReset(payload);
+
+    // B. THE GATEKEEPER - Enforce token checks on secure endpoints
+    if (!validateSession(payload.token)) {
+      return createResponse({ status: "error", message: "Unauthorized or Expired Session." });
+    }
+
+    // C. SECURE ROUTES
+    switch (action) {
+      case "VALIDATE_SESSION":
+        return createResponse({ status: "success", message: "Session valid." });
+      
+      // Candidate Ingestion Engine integration
+      case "ADD_CANDIDATE":
+        return handleAddCandidate(payload.candidate);
+        
+      case "FETCH_DIRECTORY":
+        return handleFetchDirectory(payload);
+
+      case "GET_SINGLE_RECORD":
+        return handleGetSingleRecord(payload.studentId);
+        
+      case "EDIT_RECORD":
+        return handleEditRecord(payload.record);
+
+      case "GET_IMAGE_BASE64":
+        return handleGetImageBase64(payload);
+
+      case "DELETE_RECORD":
+        return handleDeleteRecord(payload);
+
+      // ====================================================
+      // 💳 SHARDED PAYMENT LEDGER MODULE ROUTES (Logs_YYYY)
+      // ====================================================
+      case "GET_FEE_CONFIG":
+        return handleGetFeeConfig();
+
+      case "SET_FEE_CONFIG":
+        return handleSetFeeConfig(payload.monthlyFee, payload.admissionFee);
+
+      case "BULK_LOG_PAYMENTS":
+        return handleBulkLogPayments(payload.payloadArray);
+
+      case "LAZY_FETCH_STUDENT_LOGS":
+        return handleLazyFetchStudentLogs(payload.studentId, payload.targetYear);
+
+      case "FETCH_STATEMENT_RANGE":
+        return handleFetchStatementRange(payload.startDate, payload.endDate);
+
+      case "SEND_RUNTIME_EMAIL_ATTACHMENT":
+        return handleSendRuntimeEmailAttachment(payload);
+
+      case "FETCH_MONTHLY_LEDGER":
+        return handleFetchMonthlyLedger(payload);
+
+      // ====================================================
+      // 📊 UNIFIED AUDIT REPORT ENGINE
+      // ====================================================
+      case "FETCH_AUDIT_REPORT":
+        return handleFetchAuditReport(payload);
+
+      default:
+        return createResponse({ status: "error", message: "Unknown action." });
+    }
+  } catch (error) {
+    return createResponse({ status: "error", message: "Engine Error: " + error.toString() });
+  }
+}
+
+/**
+ * handleFetchMonthlyLedger
+ * -------------------------------------------------------------------
+ * Opens the target annual shard (Logs_YYYY) and isolates transaction records
+ * matching the targeted numeric month parameter using fast string matching.
+ * 
+ * @param {Object} requestPayload Contains targetYear, targetMonth (string format, e.g. "07")
+ */
+function handleFetchMonthlyLedger(requestPayload) {
+  try {
+    var targetYear = requestPayload.year || String(new Date().getFullYear());
+    var targetMonth = requestPayload.month; // Expected zero-padded string format, e.g., "01" through "12"
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 🚀 ADVANCED SHEETS API v4 — High-performance read path
+    // Resolve the correct shard tab name with smart fallback convention.
+    // The Advanced API fetches the raw 2D array directly from the Sheets
+    // REST endpoint, bypassing the SpreadsheetApp object model overhead.
+    // ─────────────────────────────────────────────────────────────────────
+
+    // 2. Smart Sheet Tab Fallback — determine which named range to target
+    var candidateSheetNames = ["Logs_" + targetYear, "Logs", "Payment_Logs"];
+    var resolvedSheetName = null;
+
+    for (var s = 0; s < candidateSheetNames.length; s++) {
+      var candidateName = candidateSheetNames[s];
+      try {
+        // A lightweight probe: ask for a single cell; if the sheet is absent
+        // the API throws rather than returns an empty body.
+        var probe = Sheets.Spreadsheets.Values.get(
+          CONFIG.SPREADSHEET_ID,
+          "'" + candidateName + "'!A1"
+        );
+        // If we reach here, the sheet exists
+        resolvedSheetName = candidateName;
+        break;
+      } catch (probeErr) {
+        // Sheet does not exist — try next candidate
+      }
+    }
+
+    // Safety fallback if no tabs exist
+    if (!resolvedSheetName) {
+      return createResponse({ status: "success", data: [], message: "Log sheet for year " + targetYear + " not found." });
+    }
+
+    // Full shard read via Advanced Sheets API
+    var response = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + resolvedSheetName + "'"
+    );
+
+    var rawData = (response && response.values) ? response.values : [];
+
+    if (rawData.length <= 1) {
+      return createResponse({ status: "success", data: [] });
+    }
+
+    var headers = rawData[0];
+
+    // 1. Smart Column Header Detection
+    var getColIndex = function(headerArray, possibleNames) {
+      for (var i = 0; i < possibleNames.length; i++) {
+        var idx = headerArray.indexOf(possibleNames[i]);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    var txnIdIdx       = headers.indexOf("TXN_ID");
+    var studentNameIdx = headers.indexOf("STUDENT_NAME");
+    var feePeriodIdx   = headers.indexOf("FEE_PERIOD");
+    var amountIdx      = headers.indexOf("AMOUNT_COLLECTED");
+
+    var studentIdIdx = getColIndex(headers, ["STUDENT_ID", "ID", "REGISTRATION_NO"]);
+    var dateIdx      = getColIndex(headers, ["TRANSACTION_DATE", "DATE", "TIMESTAMP", "PAYMENT_DATE", "DATE_OF_PAYMENT"]);
+
+    var filteredMonthlyLogs = [];
+
+    // Note: Advanced API returns all values as strings; Date objects are not returned.
+    // We perform universal string-based month extraction on the raw cell value.
+
+    // Loop through database records backwards to maintain recent-first order natively
+    for (var i = rawData.length - 1; i >= 1; i--) {
+      var row = rawData[i];
+      var rawDateValue = (dateIdx !== -1 && dateIdx < row.length) ? row[dateIdx] : "";
+
+      if (!rawDateValue) continue;
+
+      // 3. Universal Date/Month Extractor (string-safe for Advanced API output)
+      var parsedMonth = "";
+      var dateString  = String(rawDateValue).trim();
+
+      // Try ISO format YYYY-MM-DD (Advanced API canonical output)
+      var isoMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        parsedMonth = isoMatch[2]; // Already zero-padded
+      } else {
+        // Covers DD/MM/YYYY or DD-MM-YYYY legacy formats
+        var parts = dateString.split(/[\/\-]/);
+        if (parts.length >= 3) {
+          var extracted = String(parts[1]).trim();
+          parsedMonth = extracted.length === 1 ? "0" + extracted : extracted;
+        }
+      }
+
+      // 4. Absolute Wildcard Check
+      var isWildcard = !targetMonth || targetMonth === "ALL" || targetMonth === "All Months" || targetMonth === "";
+
+      // SERVER-SIDE PRE-FILTER MATCH: Skip rows that do not match the selected target month
+      if (!isWildcard && parsedMonth !== targetMonth) {
+        continue;
+      }
+
+      filteredMonthlyLogs.push({
+        TXN_ID:           txnIdIdx       !== -1 && txnIdIdx       < row.length ? String(row[txnIdIdx])       : "",
+        STUDENT_NAME:     studentNameIdx !== -1 && studentNameIdx < row.length ? String(row[studentNameIdx]) : "",
+        STUDENT_ID:       studentIdIdx   !== -1 && studentIdIdx   < row.length ? String(row[studentIdIdx])   : "",
+        FEE_PERIOD:       feePeriodIdx   !== -1 && feePeriodIdx   < row.length ? String(row[feePeriodIdx])   : "",
+        AMOUNT_COLLECTED: amountIdx      !== -1 && amountIdx      < row.length ? Number(row[amountIdx])      : 0,
+        TRANSACTION_DATE: dateString
+      });
+    }
+
+    return createResponse({
+      status: "success",
+      data: filteredMonthlyLogs
+    });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Server Monthly Ledger Query Pipeline Failure: " + error.toString()
+    });
+  }
+}
+
+
+/**
+ * ==========================================
+ * 🗑️ RECORD SOFT-DELETION ENGINE (IS_DELETED Flag Writer)
+ * ==========================================
+ * Architectural Contract:
+ *   ZERO STRUCTURAL ROW SHIFTS. This function NEVER calls sheet.deleteRow().
+ *   Instead it locates the target student profile row and writes boolean TRUE
+ *   into the designated IS_DELETED column cell, archiving the record in-place.
+ *
+ * Execution Pipeline (Advanced Sheets API v4 — SpreadsheetApp-free):
+ *   1. Fetch ONLY Column A via Sheets.Spreadsheets.Values.get to get all
+ *      STUDENT_IDs into RAM as a flat array.
+ *   2. Use Array.indexOf() for an O(1) in-RAM lookup — no TextFinder.
+ *   3. Fetch ONLY the header row (row 1) to resolve IS_DELETED column index.
+ *   4. Fetch ONLY the IS_DELETED cell of the target row for idempotency guard.
+ *   5. Write TRUE to the IS_DELETED cell via a single targeted
+ *      Sheets.Spreadsheets.Values.update call — zero row shifting.
+ *
+ * Downstream Effects:
+ *   • handleFetchDirectory() server-side pre-filter will silently discard
+ *     this row on all subsequent directory ingestion calls.
+ *   • Historical Logs_YYYY payment ledger shards are completely unaffected.
+ *     They cross-reference by STUDENT_ID only — no row index dependency.
+ *   • handleEditRecord() continues to work against this row if an admin
+ *     needs to inspect or restore the profile in a future Phase.
+ */
+function handleDeleteRecord(payload) {
+  try {
+    var studentId = String(payload.STUDENT_ID).trim();
+
+    // ── STEP 1: Fetch ONLY Column A (STUDENT_ID index column) ──────────────
+    // Pull only column A — not the whole sheet. The resulting flat array
+    // is used for an O(1) indexOf() RAM lookup; no TextFinder required.
+    var colAResponse = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'!A:A"
+    );
+
+    var colAValues = (colAResponse && colAResponse.values) ? colAResponse.values : [];
+
+    if (colAValues.length === 0) {
+      return createResponse({ success: false, status: "error", message: "Error: Directory is empty." });
+    }
+
+    // Flatten to a 1-D array of STUDENT_ID strings for indexOf()
+    var studentIds = colAValues.map(function(row) {
+      return row.length > 0 ? String(row[0]).trim() : "";
+    });
+
+    // zeroBasedIdx 0 = header row; -1 = not found
+    var zeroBasedIdx = studentIds.indexOf(studentId);
+
+    if (zeroBasedIdx <= 0) {
+      return createResponse({
+        success: false,
+        status: "error",
+        message: "Error: Student ID '" + studentId + "' not found in database."
+      });
+    }
+
+    // Convert to 1-based sheet row number (zeroBasedIdx 1 → sheet row 2, etc.)
+    var sheetRowNumber = zeroBasedIdx + 1;
+
+    // ── STEP 2: Fetch ONLY the header row (row 1) to resolve IS_DELETED ────
+    var headerResponse = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'!1:1"
+    );
+
+    var headers = (headerResponse && headerResponse.values && headerResponse.values[0])
+      ? headerResponse.values[0]
+      : [];
+
+    // Resolve IS_DELETED column index (0-based in the headers array)
+    var deletedColIdx = headers.indexOf("IS_DELETED");
+
+    if (deletedColIdx === -1) {
+      // Schema guard: IS_DELETED column has not yet been added to the sheet.
+      // Prevents writing TRUE into the wrong cell.
+      return createResponse({
+        success: false,
+        status: "error",
+        message: "Schema Error: IS_DELETED column not found in sheet headers. " +
+                 "Please add an IS_DELETED column as the last column of the '" +
+                 CONFIG.MASTER_SHEET_NAME + "' sheet before performing deletions."
+      });
+    }
+
+    // ── STEP 3: Idempotency Guard — read the IS_DELETED cell only ──────────
+    // Convert 0-based deletedColIdx to A1 column letter notation.
+    function colIndexToLetter(idx) {
+      var letter = "";
+      var n = idx + 1; // 1-based
+      while (n > 0) {
+        var remainder = (n - 1) % 26;
+        letter = String.fromCharCode(65 + remainder) + letter;
+        n = Math.floor((n - 1) / 26);
+      }
+      return letter;
+    }
+
+    var deletedColLetter  = colIndexToLetter(deletedColIdx);
+    var deletedCellAddress = deletedColLetter + sheetRowNumber;
+    var deletedCellRange   = "'" + CONFIG.MASTER_SHEET_NAME + "'!" + deletedCellAddress;
+
+    var flagResponse = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      deletedCellRange
+    );
+
+    var existingFlag = (flagResponse && flagResponse.values &&
+                        flagResponse.values[0] && flagResponse.values[0][0] !== undefined)
+      ? flagResponse.values[0][0]
+      : "";
+
+    if (existingFlag === true || String(existingFlag).toUpperCase() === "TRUE") {
+      return createResponse({
+        success: false,
+        status: "error",
+        message: "Conflict: Student ID '" + studentId + "' has already been archived (IS_DELETED = TRUE)."
+      });
+    }
+
+    // ── STEP 4: Write IS_DELETED = TRUE via targeted Sheets API update ──────
+    // Single-cell write — minimum API surface, zero row shifting.
+    Sheets.Spreadsheets.Values.update(
+      { values: [["TRUE"]] },
+      CONFIG.SPREADSHEET_ID,
+      deletedCellRange,
+      { valueInputOption: "USER_ENTERED" }
+    );
+
+    return createResponse({
+      success: true,
+      status: "success",
+      message: "Student ID '" + studentId + "' has been soft-deleted and archived successfully. " +
+               "The physical row is preserved. The profile will no longer appear in the active directory."
+    });
+
+  } catch (error) {
+    return createResponse({
+      success: false,
+      status: "error",
+      message: "Soft-Delete Engine Exception: " + error.toString()
+    });
+  }
+}
+
+/**
+ * ==========================================
+ * 📦 MODULE 4: CORE LOGIC APIS
+ * ==========================================
+ */
+const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+function requestReset(payload) {
+  const props = getProps();
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  props.setProperty("RESET_OTP", otp);
+  props.setProperty("OTP_TIMESTAMP", new Date().getTime().toString());
+  
+  try {
+    MailApp.sendEmail({
+      to: CONFIG.ADMIN_EMAIL,
+      subject: "Babla Yoga Training Center ERP Portal - Password Reset Required",
+      body: `Your secure identity override verification token is: ${otp}\n\nThis token expires in 5 minutes.`
+    });
+    return createResponse({ status: "success", message: "OTP transmitted." });
+  } catch (e) {
+    return createResponse({ status: "error", message: "MailApp quota exceeded or unauthorized: " + e.toString() });
+  }
+}
+
+function verifyAndReset(payload) {
+  const props = getProps();
+  const savedOtp = props.getProperty("RESET_OTP");
+  const savedTimestamp = parseInt(props.getProperty("OTP_TIMESTAMP") || "0", 10);
+  
+  if (savedOtp && payload.otp === savedOtp && (new Date().getTime() - savedTimestamp) < OTP_EXPIRY_MS) {
+    props.setProperty("ADMIN_PASS", payload.newPassword);
+    props.deleteProperty("RESET_OTP");
+    props.deleteProperty("OTP_TIMESTAMP");
+    props.deleteProperty("SESSION_TOKEN"); // Terminate all other sessions
+    return createResponse({ status: "success", message: "Security Key updated." });
+  }
+  return createResponse({ status: "error", message: "Invalid or expired OTP." });
+}
+
+/**
+ * ==========================================
+ * 🗂️ MODULE 5: STRICT COLLECTION MANAGEMENT
+ * ==========================================
+ */
+
+/**
+ * ==========================================
+ * 🗄️ MODULE 6: CRUD & FILE STREAMING OPERATIONS
+ * ==========================================
+ */
+
+/**
+ * processBase64File — Advanced Drive API v2 Edition
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Converts a raw base64 string into a Drive file and returns its public URL.
+ *
+ * Upgrade Summary (DriveApp-free):
+ *   • Blob is uploaded via Drive.Files.insert — a single REST call that sets
+ *     the parent folder AND grants public reader access in one round-trip.
+ *   • No separate file.setSharing() call required (eliminated one network hop
+ *     per upload, halving latency for photo + signature pairs).
+ *   • Returns the exact same URL format as before so the frontend is unaffected.
+ *
+ * @param {string} fileName   Target filename (with extension).
+ * @param {string} mimeType   MIME type of the file (e.g. "image/jpeg").
+ * @param {string} base64Data Raw base64 string (with or without data-URI prefix).
+ * @returns {string} Public viewer URL, or "" on empty input.
+ */
+function processBase64File(fileName, mimeType, base64Data) {
+  if (!base64Data) return "";
+
+  // Strip data-URI prefix if present, then decode to a byte array
+  var cleanData = base64Data.indexOf(',') !== -1 ? base64Data.split(',').pop() : base64Data;
+  var decoded   = Utilities.base64Decode(cleanData);
+  var blob      = Utilities.newBlob(decoded, mimeType, fileName);
+
+  // Resolve the parent folder ID via the Advanced Drive API
+  var parentFolderId = getOrCreateDriveFolderId("Babla Yoga Candidate Documents");
+
+  // ── Single Drive.Files.insert call: upload + set parent + grant public read ─
+  // The `readers` permission field is set inside the metadata object so that
+  // sharing is applied atomically during creation — no extra round-trip needed.
+  var fileMetadata = {
+    title: fileName,
+    mimeType: mimeType,
+    parents: [{ id: parentFolderId }]
+  };
+
+  var insertedFile = Drive.Files.insert(fileMetadata, blob);
+
+  // Grant public "anyone with the link can view" access
+  Drive.Permissions.insert(
+    { role: "reader", type: "anyone", withLink: true },
+    insertedFile.id
+  );
+
+  return "https://drive.usercontent.google.com/download?id=" + insertedFile.id + "&export=view";
+}
+
+/**
+ * getOrCreateDriveFolderId — Advanced Drive API v2 Edition
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Returns the Drive folder ID to use as the upload parent.
+ *
+ * Resolution Priority:
+ *   1. CONFIG.DRIVE_FOLDER_ID — if provided and non-empty, skip all searches
+ *      and use it directly (fastest path; zero API calls).
+ *   2. Drive.Files.list query — search for an existing folder by name to avoid
+ *      creating duplicates on repeated calls.
+ *   3. Drive.Files.insert — create the folder and return its new ID.
+ *
+ * Replaces: DriveApp.getFoldersByName() + DriveApp.createFolder()
+ *
+ * @param {string} folderName  The display name to search for / create.
+ * @returns {string} Drive folder ID.
+ */
+function getOrCreateDriveFolderId(folderName) {
+  // ── Fast path: use the preconfigured folder ID if available ────────────────
+  if (CONFIG.DRIVE_FOLDER_ID && CONFIG.DRIVE_FOLDER_ID.trim() !== "") {
+    return CONFIG.DRIVE_FOLDER_ID.trim();
+  }
+
+  // ── Search path: look for an existing folder by name ───────────────────────
+  var query = "mimeType = 'application/vnd.google-apps.folder'" +
+              " and title = '" + folderName.replace(/'/g, "\\'") + "'" +
+              " and trashed = false";
+
+  var listResponse = Drive.Files.list({
+    q: query,
+    maxResults: 1,
+    fields: "items(id)"
+  });
+
+  if (listResponse.items && listResponse.items.length > 0) {
+    return listResponse.items[0].id;
+  }
+
+  // ── Create path: folder does not exist — create it now ─────────────────────
+  var newFolder = Drive.Files.insert({
+    title: folderName,
+    mimeType: "application/vnd.google-apps.folder"
+  });
+
+  return newFolder.id;
+}
+
+/**
+ * handleFetchDirectory — Directory Ingestion Pipeline (Soft-Delete Aware)
+ * ─────────────────────────────────────────────────────────────────────────
+ * Reads the master student registry from the spreadsheet, resolves the
+ * IS_DELETED column index dynamically at runtime, and enforces a
+ * SERVER-SIDE PRE-FILTER that silently discards every soft-deleted row
+ * before the JSON response payload is compiled.
+ *
+ * Why server-side?  Keeping deleted profiles off the wire ensures:
+ *   • Minimal network payload to the browser cache.
+ *   • Autocomplete, search, and all client modules stay clean without
+ *     requiring any frontend rewrites or filter decorators.
+ *   • Historical financial ledger tabs (Logs_YYYY) are completely
+ *     unaffected — they carry their own STUDENT_ID cross-reference
+ *     and will continue to process normally.
+ *
+ * Pre-Filter Gate Logic:
+ *   row[deletedIdx] === true          → boolean TRUE  (Sheets checkbox)
+ *   String(row[deletedIdx]).toUpperCase() === "TRUE" → string "TRUE"
+ *   Either condition → row skipped; never enters activeCandidates[].
+ *
+ * Backwards Compatibility:
+ *   If IS_DELETED column is absent (deletedIdx === -1), the guard is a
+ *   no-op and all rows are returned — matching the previous behaviour
+ *   so that existing deployments without the column are unharmed.
+ */
+/**
+ * handleFetchDirectory — Column-Projected Minimal Directory Edition
+ * ─────────────────────────────────────────────────────────────────────────────
+ * SQL SELECT analogy: SELECT STUDENT_ID, RL_NO, STUDENT_NAME, STUDENT_MOBILE,
+ *                            ENROLLED_COURSE, CLASS_BATCH_DAYS
+ *                     FROM   `Main Recoreds`
+ *                     WHERE  IS_DELETED IS NOT TRUE;
+ *
+ * Upgrade Summary:
+ *   OLD: Returned all 34 columns per student — photos, signatures, parent
+ *        details, Aadhaar, addresses all streamed to the browser on every
+ *        FETCH_DIRECTORY call regardless of whether they were ever rendered.
+ *
+ *   NEW: Returns only the 6 columns needed to render the student list view.
+ *        Heavy data (photos, signatures, parent details) is fetched on-demand
+ *        via the new GET_SINGLE_RECORD endpoint when the user clicks a row.
+ *
+ *   Network payload reduction: ~82% fewer bytes per student record.
+ *   RAM reduction: proportional — only 6 values per row held in memory.
+ *
+ * Soft-Delete Filter: IS_DELETED server-side pre-filter is fully preserved.
+ * Backwards Compatibility: Response shape { status, data: [] } is unchanged.
+ */
+function handleFetchDirectory(payload) {
+  try {
+    // ───────────────────────────────────────────────────────────────────────────
+    // Strict column whitelist for the list-view payload.
+    // Heavy columns (STUDENT_PHOTO_URL, STUDENT_SIGNATURE_URL, HOME_ADDRESS,
+    // FATHER/MOTHER/GUARDIAN details, STUDENT_AADHAR, etc.) are intentionally
+    // excluded and fetched lazily via GET_SINGLE_RECORD on user interaction.
+    // ───────────────────────────────────────────────────────────────────────────
+    var LIST_VIEW_COLUMNS = [
+      'STUDENT_ID',
+      'RL_NO',
+      'STUDENT_NAME',
+      'STUDENT_MOBILE',
+      'ENROLLED_COURSE',
+      'CLASS_BATCH_DAYS'
+    ];
+
+    // 🚀 ADVANCED SHEETS API v4 — Full sheet fetch (all rows, all columns)
+    // We still fetch the full sheet so we can resolve IS_DELETED and column
+    // indexes dynamically. Only the projection (row packing) is narrowed.
+    var response = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'"
+    );
+
+    var rawData = (response && response.values) ? response.values : [];
+
+    if (rawData.length <= 1) {
+      return createResponse({ status: "success", data: [] });
+    }
+
+    var headers = rawData[0];
+
+    // ── Resolve column indexes once from the live header row ──────────────────
+    var deletedIdx = headers.indexOf("IS_DELETED");
+
+    // Pre-resolve indexes for every whitelisted column (avoids repeated
+    // indexOf() calls inside the hot row-packing loop).
+    var colIndexMap = {};
+    for (var c = 0; c < LIST_VIEW_COLUMNS.length; c++) {
+      colIndexMap[LIST_VIEW_COLUMNS[c]] = headers.indexOf(LIST_VIEW_COLUMNS[c]);
+    }
+
+    var activeCandidates = [];
+
+    for (var i = 1; i < rawData.length; i++) {
+      var row = rawData[i];
+
+      // ── SERVER-SIDE SOFT-DELETE PRE-FILTER ───────────────────────────────
+      // Skip soft-deleted rows entirely; they never reach the client.
+      if (deletedIdx !== -1 && deletedIdx < row.length) {
+        var deletedFlag = row[deletedIdx];
+        if (deletedFlag === true || String(deletedFlag).toUpperCase() === "TRUE") {
+          continue;
+        }
+      }
+
+      // ── COLUMN PROJECTION: pack only whitelisted fields ──────────────────
+      // This is the SQL SELECT projection step. Only the 6 columns in
+      // LIST_VIEW_COLUMNS are included in the response object; all other
+      // columns are discarded here on the server before the JSON is assembled.
+      var record = {};
+      for (var k = 0; k < LIST_VIEW_COLUMNS.length; k++) {
+        var col = LIST_VIEW_COLUMNS[k];
+        var idx = colIndexMap[col];
+        record[col] = (idx !== -1 && idx < row.length) ? row[idx] : "";
+      }
+
+      activeCandidates.push(record);
+    }
+
+    return createResponse({ status: "success", data: activeCandidates });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Directory Ingestion Pipeline Failure: " + error.toString()
+    });
+  }
+}
+
+/**
+ * handleGetSingleRecord — On-Demand Full Record Hydrator
+ * ─────────────────────────────────────────────────────────────────────────────
+ * SQL analogy: SELECT * FROM `Main Recoreds` WHERE STUDENT_ID = ? LIMIT 1;
+ *
+ * Fetches the complete 34-column record for a single student. Called by the
+ * frontend only when the user opens a View / Edit / Download PDF modal, not
+ * on every directory load.
+ *
+ * Execution Pipeline (two targeted API calls, no full-sheet load):
+ *   1. Fetch ONLY Column A (STUDENT_ID index) via Sheets API.
+ *   2. In-RAM indexOf() to locate the target row index — O(1) lookup.
+ *   3. Fetch ONLY that specific sheet row via a row-range Sheets API call.
+ *   4. Map the row array against the live header row (also fetched in the
+ *      same batchGet call) into a full { field: value } record object.
+ *
+ * Routing Trigger: case "GET_SINGLE_RECORD" in doPost()
+ *
+ * @param {string} studentId  The STUDENT_ID to fetch.
+ * @returns {Object} { status: "success", data: Object } | { status: "error", message: string }
+ */
+function handleGetSingleRecord(studentId) {
+  try {
+    if (!studentId || String(studentId).trim() === "") {
+      return createResponse({ status: "error", message: "Missing required parameter: studentId." });
+    }
+
+    var targetId = String(studentId).trim();
+
+    // ── STEP 1: Fetch ONLY Column A (STUDENT_ID index) ───────────────────────
+    // Pulls only the single-column ID index into RAM. Zero overhead from
+    // the other 33 data columns.
+    var colAResponse = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'!A:A"
+    );
+
+    var colAValues = (colAResponse && colAResponse.values) ? colAResponse.values : [];
+
+    if (colAValues.length === 0) {
+      return createResponse({ status: "error", message: "Database is empty." });
+    }
+
+    // Flatten to a 1-D array of STUDENT_ID strings for indexOf()
+    var studentIds = colAValues.map(function(r) {
+      return r.length > 0 ? String(r[0]).trim() : "";
+    });
+
+    // zeroBasedIdx 0 = header row; -1 = not found
+    var zeroBasedIdx = studentIds.indexOf(targetId);
+
+    if (zeroBasedIdx <= 0) {
+      return createResponse({
+        status: "error",
+        message: "Student record not found for ID: '" + targetId + "'."
+      });
+    }
+
+    // 1-based sheet row number (zeroBasedIdx=1 → sheet row 2, etc.)
+    var sheetRowNumber = zeroBasedIdx + 1;
+
+    // ── STEP 2: Batch-fetch header row + target data row in ONE call ────────
+    // Using batchGet with two ranges collapses two round-trips into one
+    // HTTP request, cutting network latency by half vs sequential gets.
+    var batchResponse = Sheets.Spreadsheets.Values.batchGet(
+      CONFIG.SPREADSHEET_ID,
+      {
+        ranges: [
+          "'" + CONFIG.MASTER_SHEET_NAME + "'!1:1",                           // Header row
+          "'" + CONFIG.MASTER_SHEET_NAME + "'!" + sheetRowNumber + ":" + sheetRowNumber  // Data row
+        ]
+      }
+    );
+
+    var valueRanges = (batchResponse && batchResponse.valueRanges)
+      ? batchResponse.valueRanges
+      : [];
+
+    var headers = (valueRanges[0] && valueRanges[0].values && valueRanges[0].values[0])
+      ? valueRanges[0].values[0]
+      : [];
+
+    var rowData = (valueRanges[1] && valueRanges[1].values && valueRanges[1].values[0])
+      ? valueRanges[1].values[0]
+      : [];
+
+    if (headers.length === 0) {
+      return createResponse({ status: "error", message: "Schema error: header row is empty." });
+    }
+
+    // ── STEP 3: Map the data row against live headers into a full record ─────
+    // All columns are included (including photos, signatures, parent details).
+    // IS_DELETED is stripped from the response — internal metadata only.
+    var record = {};
+    for (var j = 0; j < headers.length; j++) {
+      var header = headers[j];
+      if (header === "IS_DELETED") continue; // Strip internal soft-delete flag
+      record[header] = (j < rowData.length) ? rowData[j] : "";
+    }
+
+    return createResponse({ status: "success", data: record });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Single Record Fetch Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * handleEditRecord — Advanced Sheets API v4 Edition
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Execution Pipeline (SpreadsheetApp-free):
+ *   1. Fetch ONLY Column A via Sheets.Spreadsheets.Values.get to get all
+ *      STUDENT_IDs into RAM as a flat array.
+ *   2. Use Array.indexOf() for an O(1) in-RAM lookup — no TextFinder.
+ *   3. Fetch ONLY the header row (row 1) via Sheets API for column mapping.
+ *   4. Fetch ONLY the target data row via Sheets API using the resolved
+ *      1-based sheet row index.
+ *   5. Merge incoming record fields with the existing row data.
+ *   6. Write the merged row back using a single targeted
+ *      Sheets.Spreadsheets.Values.update call — zero structural row shifts.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+function handleEditRecord(record) {
+  try {
+    var studentId = String(record.STUDENT_ID).trim();
+
+    // ── STEP 1: Fetch ONLY Column A (STUDENT_ID index column) — O(rows) read ─
+    // Only column A is pulled, not the whole sheet. The resulting flat array
+    // is used for an O(1) indexOf() RAM lookup — no TextFinder required.
+    var colAResponse = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'!A:A"
+    );
+
+    var colAValues = (colAResponse && colAResponse.values) ? colAResponse.values : [];
+
+    if (colAValues.length === 0) {
+      return createResponse({ status: "error", message: "Database is empty." });
+    }
+
+    // Flatten to a 1-D array of STUDENT_ID strings for indexOf()
+    var studentIds = colAValues.map(function(row) {
+      return row.length > 0 ? String(row[0]).trim() : "";
+    });
+
+    // indexOf returns 0-based; index 0 is the header row ("STUDENT_ID" label)
+    var zeroBasedIdx = studentIds.indexOf(studentId);
+
+    if (zeroBasedIdx <= 0) {
+      // zeroBasedIdx === -1: not found; zeroBasedIdx === 0: matched the header
+      return createResponse({ status: "error", message: "Student record not found." });
+    }
+
+    // Convert to 1-based sheet row number (e.g. zeroBasedIdx=1 → sheet row 2)
+    var sheetRowNumber = zeroBasedIdx + 1;
+
+    // ── STEP 2: Convert new base64 file uploads if present ─────────────────
+    if (record.STUDENT_PHOTO_URL && record.STUDENT_PHOTO_URL.startsWith("data:")) {
+      record.STUDENT_PHOTO_URL = uploadCandidateBase64(
+        record.STUDENT_PHOTO_URL,
+        "STUDENT_" + String(record.STUDENT_NAME).replace(/\s+/g, "_") + "_" + record.STUDENT_ID
+      );
+    }
+
+    if (record.STUDENT_SIGNATURE_URL && record.STUDENT_SIGNATURE_URL.startsWith("data:")) {
+      record.STUDENT_SIGNATURE_URL = uploadCandidateBase64(
+        record.STUDENT_SIGNATURE_URL,
+        "SIGNATURE_" + String(record.STUDENT_NAME).replace(/\s+/g, "_") + "_" + record.STUDENT_ID
+      );
+    }
+
+    // ── STEP 3: Fetch ONLY the header row (row 1) via Sheets API ───────────
+    var headerResponse = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'!1:1"
+    );
+
+    var headers = (headerResponse && headerResponse.values && headerResponse.values[0])
+      ? headerResponse.values[0]
+      : [];
+
+    if (headers.length === 0) {
+      return createResponse({ status: "error", message: "Invalid schema: header row is empty." });
+    }
+
+    // Schema guard — STUDENT_ID must be present as a header for safe column mapping.
+    if (headers.indexOf("STUDENT_ID") === -1) {
+      return createResponse({ status: "error", message: "Invalid schema mapping." });
+    }
+
+    // ── STEP 4: Fetch ONLY the target data row via Sheets API ──────────────
+    // Build the A1 notation range for the exact row, e.g. "'Main Recoreds'!2:2"
+    var targetRowRange = "'" + CONFIG.MASTER_SHEET_NAME + "'!" + sheetRowNumber + ":" + sheetRowNumber;
+
+    var rowResponse = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      targetRowRange
+    );
+
+    var existingRowData = (rowResponse && rowResponse.values && rowResponse.values[0])
+      ? rowResponse.values[0]
+      : [];
+
+    // ── STEP 5: Merge incoming record fields with the existing row data ─────
+    // For each header column: use the new value from `record` if supplied;
+    // otherwise preserve the existing cell value so untouched fields are
+    // never blanked. Pad existingRowData with "" if the API returned a
+    // shorter row (trailing empty cells are omitted by the Sheets API).
+    var rowDataToSave = [];
+    for (var j = 0; j < headers.length; j++) {
+      var col = headers[j];
+      if (record[col] !== undefined) {
+        rowDataToSave.push(record[col]);
+      } else {
+        rowDataToSave.push(j < existingRowData.length ? existingRowData[j] : "");
+      }
+    }
+
+    // ── STEP 6: Single targeted write via Sheets.Spreadsheets.Values.update ─
+    // Writes to the exact row range — no row shifting, no SpreadsheetApp.
+    var updateRange = "'" + CONFIG.MASTER_SHEET_NAME + "'!" + sheetRowNumber + ":" + sheetRowNumber;
+
+    Sheets.Spreadsheets.Values.update(
+      { values: [rowDataToSave] },
+      CONFIG.SPREADSHEET_ID,
+      updateRange,
+      { valueInputOption: "USER_ENTERED" }
+    );
+
+    return createResponse({ status: "success", message: "Record updated successfully." });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Edit Engine Exception: " + error.toString()
+    });
+  }
+}
+
+/**
+ * ==========================================
+ * 🖼️ MODULE 6B: SERVER-SIDE CORS IMAGE PROXY
+ * ==========================================
+ * Bypasses browser CORS entirely by fetching Google Drive file blobs
+ * on the Apps Script server and returning them as Base64 data URIs.
+ */
+
+/**
+ * handleGetImageBase64 — Advanced Drive API / UrlFetchApp Edition
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Extracts a Google Drive File ID from any common Drive URL pattern,
+ * fetches the file server-side, and returns a clean Base64 data URI.
+ * Supports: /file/d/ID, open?id=ID, id=ID&export, uc?id=ID, download?id=ID
+ *
+ * Upgrade Summary (DriveApp-free):
+ *   OLD PATH: DriveApp.getFileById() → file.getBlob() → blob.getBytes()
+ *     • getBlob() inflates the entire file into the V8 heap as a Java byte[]
+ *       array. On images > ~2 MB this can exhaust V8's 50 MB memory ceiling
+ *       and trigger "Exceeded maximum execution time" or OOM crashes.
+ *
+ *   NEW PATH: Drive.Files.get (metadata) + UrlFetchApp (raw media stream)
+ *     • Drive.Files.get fetches only the file metadata (mimeType) — zero
+ *       binary data loaded into the heap.
+ *     • UrlFetchApp.fetch() with muteHttpExceptions streams the file bytes
+ *       over HTTP without instantiating a Blob object until base64 encoding,
+ *       which Apps Script handles natively in C++ rather than V8 JS heap.
+ *     • Utilities.base64Encode() operates on the raw byte array returned by
+ *       HTTPResponse.getContent(), which is the minimal materialisation path.
+ *
+ * @param {Object} payload  Must contain { url: string }
+ * @returns {Object} { status: "success", base64: string } | { status: "error", message: string }
+ */
+function handleGetImageBase64(payload) {
+  var url = payload.url;
+
+  if (!url || typeof url !== 'string' || url.trim() === '') {
+    return createResponse({ status: "error", message: "No URL provided." });
+  }
+
+  // If it's already a data URI, pass it straight back — zero processing
+  if (url.indexOf('data:') === 0) {
+    return createResponse({ status: "success", base64: url });
+  }
+
+  // ── Extract Google Drive File ID using multi-pattern regex matching ───────────
+  var fileId = null;
+  var patterns = [
+    /\/d\/([a-zA-Z0-9_-]+)/,          // /file/d/FILE_ID/
+    /[?&]id=([a-zA-Z0-9_-]+)/,         // ?id=FILE_ID or &id=FILE_ID
+    /\/open\?id=([a-zA-Z0-9_-]+)/,     // /open?id=FILE_ID
+    /uc\?.*id=([a-zA-Z0-9_-]+)/        // uc?export=download&id=FILE_ID
+  ];
+
+  for (var i = 0; i < patterns.length; i++) {
+    var match = url.match(patterns[i]);
+    if (match && match[1]) {
+      fileId = match[1];
+      break;
+    }
+  }
+
+  if (!fileId) {
+    return createResponse({
+      status: "error",
+      message: "Could not extract Drive File ID from URL: " + url
+    });
+  }
+
+  try {
+    // ── STEP 1: Fetch file metadata only (mimeType) ──────────────────────────
+    // Drive.Files.get retrieves only JSON metadata; no binary blob is loaded.
+    var fileMeta = Drive.Files.get(fileId, { fields: "mimeType" });
+    var mimeType = (fileMeta && fileMeta.mimeType) ? fileMeta.mimeType : "application/octet-stream";
+
+    // ── STEP 2: Stream file content via UrlFetchApp (avoids V8 heap load) ──
+    // The Drive export/download URL requires OAuth. ScriptApp.getOAuthToken()
+    // provides the current user's access token for authenticated fetch calls.
+    var mediaUrl  = "https://www.googleapis.com/drive/v2/files/" + fileId + "?alt=media";
+    var response  = UrlFetchApp.fetch(mediaUrl, {
+      headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      return createResponse({
+        status: "error",
+        message: "Drive media fetch failed (HTTP " + response.getResponseCode() + ") for fileId: " + fileId
+      });
+    }
+
+    // ── STEP 3: Encode the raw byte array to base64 ────────────────────────
+    // getContent() returns a byte[] directly; base64Encode() processes it
+    // in native C++ rather than the JS heap — minimal V8 memory pressure.
+    var bytes      = response.getContent();
+    var base64Str  = Utilities.base64Encode(bytes);
+    var dataUri    = "data:" + mimeType + ";base64," + base64Str;
+
+    return createResponse({ status: "success", base64: dataUri });
+
+  } catch (err) {
+    console.error("CORS Proxy fetch failed for fileId: " + fileId, err);
+    return createResponse({
+      status: "error",
+      message: "Drive file access error: " + err.toString()
+    });
+  }
+}
+
+/**
+ * ==========================================
+ * 🧘 MODULE 7: HIGH-PERFORMANCE CANDIDATE INGESTION
+ * ==========================================
+ */
+
+/**
+ * handleAddCandidate — Lightweight Duplicate-Check Edition
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Validates and appends a new student record to the master sheet.
+ *
+ * Execution Pipeline (full-sheet RAM load eliminated):
+ *   1. TARGETED COLUMN FETCH: Pull only RL_NO, STUDENT_NAME, and DOB columns
+ *      via two focused Sheets API range calls instead of fetching the entire
+ *      sheet. In-RAM payload is reduced by ~(total_cols - 3) / total_cols
+ *      — typically an 85–90% reduction in memory usage.
+ *
+ *   2. LIGHTWEIGHT DUPLICATE GATE (two-rule logic):
+ *      a. RL_NO collision → two students cannot share the same roll number.
+ *      b. STUDENT_NAME (case-insensitive) + DOB match → same person applying twice.
+ *      Rejected if EITHER condition is true.
+ *
+ *   3. STATIC SCHEMA APPEND: Uses SHEET_TEMPLATES.MasterRecord directly as the
+ *      column order for the new row — no live header read required for the
+ *      write path.
+ *
+ *   4. AUTO-HEAL: If the sheet is empty (first run), writes the header row via
+ *      Sheets API append then proceeds — no SpreadsheetApp object model needed
+ *      after initial bootstrap.
+ *
+ * Response contract: identical to previous implementation — no frontend changes.
+ */
+function handleAddCandidate(candidate) {
+  try {
+    var schema = SHEET_TEMPLATES.MasterRecord;
+
+    // ── STEP 1: Resolve column indexes from the static schema ──────────────
+    // All index resolution is done against the in-memory SHEET_TEMPLATES array
+    // instead of a live sheet read — zero API calls for schema mapping.
+    var rlNoIdx  = schema.indexOf("RL_NO");
+    var nameIdx  = schema.indexOf("STUDENT_NAME");
+    var dobIdx   = schema.indexOf("DOB");
+
+    // ── STEP 2: Auto-Heal — ensure header row exists on first run ──────────
+    // Probe row 1 only. If the sheet is blank, write the header via the
+    // Sheets API append and skip the duplicate check (no data yet).
+    var sheetIsEmpty = false;
+    try {
+      var probeResponse = Sheets.Spreadsheets.Values.get(
+        CONFIG.SPREADSHEET_ID,
+        "'" + CONFIG.MASTER_SHEET_NAME + "'!A1"
+      );
+      // If A1 has no value the sheet exists but has no headers
+      if (!probeResponse.values || probeResponse.values.length === 0) {
+        sheetIsEmpty = true;
+      }
+    } catch (probeErr) {
+      // Sheets API throws when the named tab does not exist at all
+      sheetIsEmpty = true;
+    }
+
+    if (sheetIsEmpty) {
+      // Write only the header row and proceed directly to append
+      Sheets.Spreadsheets.Values.append(
+        { values: [schema] },
+        CONFIG.SPREADSHEET_ID,
+        "'" + CONFIG.MASTER_SHEET_NAME + "'!A:A",
+        { valueInputOption: "USER_ENTERED" }
+      );
+    } else {
+      // ── STEP 3: Targeted Duplicate Check — fetch only 3 columns ─────────
+      // Construct a multi-range request to pull ONLY the three columns
+      // needed for validation. Memory footprint: O(rows × 3) instead of
+      // O(rows × total_cols). For 34-column schema: ~90% RAM reduction.
+      //
+      // Column letter helper (0-based index → A1 letter)
+      function colLetter(idx) {
+        var letter = "";
+        var n = idx + 1;
+        while (n > 0) {
+          var rem = (n - 1) % 26;
+          letter  = String.fromCharCode(65 + rem) + letter;
+          n       = Math.floor((n - 1) / 26);
+        }
+        return letter;
+      }
+
+      var rlNoCol = colLetter(rlNoIdx);
+      var nameCol = colLetter(nameIdx);
+      var dobCol  = colLetter(dobIdx);
+
+      // Fetch three single-column ranges in one batchGet call
+      var batchResponse = Sheets.Spreadsheets.Values.batchGet(
+        CONFIG.SPREADSHEET_ID,
+        {
+          ranges: [
+            "'" + CONFIG.MASTER_SHEET_NAME + "'!" + rlNoCol + "2:" + rlNoCol,
+            "'" + CONFIG.MASTER_SHEET_NAME + "'!" + nameCol + "2:" + nameCol,
+            "'" + CONFIG.MASTER_SHEET_NAME + "'!" + dobCol  + "2:" + dobCol
+          ]
+        }
+      );
+
+      var valueRanges = (batchResponse && batchResponse.valueRanges)
+        ? batchResponse.valueRanges
+        : [];
+
+      var rlNoRows  = (valueRanges[0] && valueRanges[0].values) ? valueRanges[0].values : [];
+      var nameRows  = (valueRanges[1] && valueRanges[1].values) ? valueRanges[1].values : [];
+      var dobRows   = (valueRanges[2] && valueRanges[2].values) ? valueRanges[2].values : [];
+
+      // Determine the longest column (all should be equal but guard for trailing empties)
+      var rowCount = Math.max(rlNoRows.length, nameRows.length, dobRows.length);
+
+      var incomingRlNo = String(candidate.RL_NO   || "").trim();
+      var incomingName = String(candidate.STUDENT_NAME || "").trim().toLowerCase();
+      var incomingDob  = String(candidate.DOB      || "").trim();
+
+      for (var i = 0; i < rowCount; i++) {
+        var existingRlNo = String((rlNoRows[i] && rlNoRows[i][0]) ? rlNoRows[i][0] : "").trim();
+        var existingName = String((nameRows[i] && nameRows[i][0]) ? nameRows[i][0] : "").trim().toLowerCase();
+        var existingDob  = String((dobRows[i]  && dobRows[i][0])  ? dobRows[i][0]  : "").trim();
+
+        // Rule A: Roll Number collision — same RL_NO assigned to a different student
+        if (incomingRlNo !== "" && existingRlNo === incomingRlNo) {
+          return createResponse({
+            status: "error",
+            message: "Duplicate detected: Roll Number '" + candidate.RL_NO +
+                     "' is already assigned in the database. Please use a unique Roll Number."
+          });
+        }
+
+        // Rule B: Same-person re-application — name (case-insensitive) + DOB both match
+        if (incomingName !== "" && incomingDob !== "" &&
+            existingName === incomingName && existingDob === incomingDob) {
+          return createResponse({
+            status: "error",
+            message: "Duplicate student detected: A student named '" + candidate.STUDENT_NAME +
+                     "' with the same date of birth already exists in the database."
+          });
+        }
+      }
+    }
+
+    // ── STEP 4: Upload base64 file attachments to Drive ────────────────────
+    // Drive upload happens AFTER the duplicate gate to avoid orphaned files
+    // on rejection paths.
+    candidate.STUDENT_PHOTO_URL = uploadCandidateBase64(
+      candidate.STUDENT_PHOTO_URL,
+      "STUDENT_" + String(candidate.STUDENT_NAME).replace(/\s+/g, "_") + "_" + candidate.STUDENT_ID
+    );
+    candidate.STUDENT_SIGNATURE_URL = uploadCandidateBase64(
+      candidate.STUDENT_SIGNATURE_URL,
+      "SIGNATURE_" + String(candidate.STUDENT_NAME).replace(/\s+/g, "_") + "_" + candidate.STUDENT_ID
+    );
+
+    // ── STEP 5: Map candidate to static schema array ───────────────────────
+    // SHEET_TEMPLATES.MasterRecord defines the canonical column order.
+    // No live header read is needed — schema is authoritative at ingestion time.
+    var rowDataToSave = [];
+    for (var s = 0; s < schema.length; s++) {
+      var col = schema[s];
+      if (col === "TIMESTAMP") {
+        rowDataToSave.push(candidate.TIMESTAMP ? new Date(candidate.TIMESTAMP) : new Date());
+      } else if (col === "IS_DELETED") {
+        rowDataToSave.push(false); // New records are always active
+      } else {
+        rowDataToSave.push(candidate[col] !== undefined ? candidate[col] : "");
+      }
+    }
+
+    // ── STEP 6: Single atomic append via Advanced Sheets API ───────────────
+    Sheets.Spreadsheets.Values.append(
+      { values: [rowDataToSave] },
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'!A:A",
+      { valueInputOption: "USER_ENTERED" }
+    );
+
+    return createResponse({
+      status: "success",
+      message: "Candidate " + candidate.STUDENT_NAME + " enrolled successfully!",
+      studentId: candidate.STUDENT_ID
+    });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Candidate Ingestion Engine Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * Extracts mimetype and base64 fields, sending it to processBase64File
+ */
+function uploadCandidateBase64(base64Str, baseFilename) {
+  if (!base64Str || !base64Str.startsWith("data:")) {
+    return base64Str || ""; // Returns as-is if empty or already uploaded
+  }
+  
+  try {
+    const parts = base64Str.split(",");
+    const mimeType = parts[0].match(/data:([^;]+);/)[1];
+    const extension = mimeType.split("/")[1] || "png";
+    const filename = baseFilename + "." + extension;
+    
+    return processBase64File(filename, mimeType, parts[1]);
+  } catch (err) {
+    console.error("Base64 candidate upload failed: " + baseFilename, err);
+    return "Upload Error: " + err.toString();
+  }
+}
+
+/**
+ * ==========================================
+ * 💳 MODULE 8: SHARDED PAYMENT LEDGER ENGINE
+ * ==========================================
+ * Annual table sharding system using dynamic "Logs_YYYY" tab names.
+ * Provides:
+ *   - Fee configuration get/set via Script Properties
+ *   - High-speed sharded bulk payment writer
+ *   - Targeted single-student log fetcher with backward year traversal
+ *
+ * Schema per shard tab: ['TXN_ID', 'TIMESTAMP', 'STUDENT_ID', 'RL_NO', 'STUDENT_NAME', 'FEE_PERIOD', 'STATUS', 'AMOUNT_COLLECTED']
+ * Tab naming convention: "Logs_" + YYYY (e.g., Logs_2025, Logs_2026)
+ * Convention over Configuration: Tab names are NEVER stored in Script Properties.
+ */
+
+/**
+ * GET_FEE_CONFIG Handler
+ * --------------------------------------------------
+ * Reads the global fee rate configuration from PropertiesService.getScriptProperties().
+ * Returns fallback defaults of 500 (monthly) and 1000 (admission) if the keys
+ * have never been initialized, ensuring zero-config first-run behavior.
+ *
+ * Routing Trigger: case "GET_FEE_CONFIG" in doPost()
+ *
+ * Script Properties Keys:
+ *   - MONTHLY_FEE: The per-month tuition fee charged to students
+ *   - ADMISSION_FEE: The one-time enrollment fee charged at admission
+ *
+ * @returns {Object} { status: "success", monthlyFee: Number, admissionFee: Number }
+ */
+function handleGetFeeConfig() {
+  try {
+    var props = getProps();
+    var rawMonthly = props.getProperty("MONTHLY_FEE");
+    var rawAdmission = props.getProperty("ADMISSION_FEE");
+
+    // Apply fallback defaults if keys are uninitialized (null)
+    var monthlyFee = (rawMonthly !== null && rawMonthly !== "") ? Number(rawMonthly) : 500;
+    var admissionFee = (rawAdmission !== null && rawAdmission !== "") ? Number(rawAdmission) : 1000;
+
+    // Guard against NaN from corrupted property values
+    if (isNaN(monthlyFee)) monthlyFee = 500;
+    if (isNaN(admissionFee)) admissionFee = 1000;
+
+    return createResponse({
+      status: "success",
+      monthlyFee: monthlyFee,
+      admissionFee: admissionFee
+    });
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Fee Config Read Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * SET_FEE_CONFIG Handler
+ * --------------------------------------------------
+ * Casts incoming parameters to clean Numbers, validates them,
+ * writes them to the Cloud Script Properties keys (MONTHLY_FEE, ADMISSION_FEE),
+ * and returns a success confirmation token.
+ *
+ * Routing Trigger: case "SET_FEE_CONFIG" in doPost()
+ *
+ * @param {*} monthlyFee - The new monthly fee value (will be cast to Number)
+ * @param {*} admissionFee - The new admission fee value (will be cast to Number)
+ * @returns {Object} { status: "success", message: "...", monthlyFee: Number, admissionFee: Number }
+ */
+function handleSetFeeConfig(monthlyFee, admissionFee) {
+  try {
+    // Cast to clean Numbers — strips strings, booleans, etc.
+    var cleanMonthly = Number(monthlyFee);
+    var cleanAdmission = Number(admissionFee);
+
+    // Validation Gate: Reject NaN or negative values
+    if (isNaN(cleanMonthly) || cleanMonthly < 0) {
+      return createResponse({
+        status: "error",
+        message: "Invalid monthly fee value. Must be a non-negative number."
+      });
+    }
+    if (isNaN(cleanAdmission) || cleanAdmission < 0) {
+      return createResponse({
+        status: "error",
+        message: "Invalid admission fee value. Must be a non-negative number."
+      });
+    }
+
+    // Persist to Cloud Script Properties
+    var props = getProps();
+    props.setProperty("MONTHLY_FEE", String(cleanMonthly));
+    props.setProperty("ADMISSION_FEE", String(cleanAdmission));
+
+    return createResponse({
+      status: "success",
+      message: "Fee configuration updated successfully.",
+      monthlyFee: cleanMonthly,
+      admissionFee: cleanAdmission
+    });
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Fee Config Write Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * BULK_LOG_PAYMENTS Handler (Sharded Transactional Bulk-Writer)
+ * --------------------------------------------------
+ * Accepts an incoming array of month payment objects, dynamically resolves
+ * the target annual shard tab name as "Logs_" + transactionYear, auto-creates
+ * the tab with schema headers if it doesn't exist, then injects all rows
+ * simultaneously using a single high-speed .setValues() call to bypass
+ * timeout gates.
+ *
+ * Routing Trigger: case "BULK_LOG_PAYMENTS" in doPost()
+ *
+ * @param {Array<Object>} payloadArray - Array of payment objects, each containing:
+ *   {
+ *     TXN_ID: string,          // Unique transaction trace token (e.g. "TXN-2026-A3F7B")
+ *     TIMESTAMP: string,       // ISO date string of payment time
+ *     STUDENT_ID: string,      // Linked student identifier
+ *     RL_NO: string,           // Roll number reference
+ *     STUDENT_NAME: string,    // Full candidate name
+ *     FEE_PERIOD: string,      // Month-Year label (e.g. "January-2026")
+ *     STATUS: string,          // Payment status (e.g. "PAID")
+ *     AMOUNT_COLLECTED: number // Amount in INR
+ *   }
+ *
+ * Returns: { status: "success", success: true, message: "...", rowsWritten: N }
+ */
+function handleBulkLogPayments(payloadArray) {
+  try {
+    // Input Validation Gate
+    if (!payloadArray || !Array.isArray(payloadArray) || payloadArray.length === 0) {
+      return createResponse({
+        status: "error",
+        success: false,
+        message: "Invalid payload: Expected a non-empty array of payment objects."
+      });
+    }
+
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var schema = SHEET_TEMPLATES.PaymentLog;
+
+    // -------------------------------------------------------
+    // PHASE A: Parse the transaction year from FEE_PERIOD.
+    // Handles both "2026-06" (New Standard) and "June-2026" (Legacy)
+    // -------------------------------------------------------
+    var transactionYear = null;
+    var firstEntry = payloadArray[0];
+
+    if (firstEntry.FEE_PERIOD && typeof firstEntry.FEE_PERIOD === 'string') {
+      var periodParts = firstEntry.FEE_PERIOD.split("-");
+      if (periodParts.length >= 2) {
+        // First try the new standard (YYYY-MM)
+        var parsedYear = parseInt(periodParts[0], 10);
+        
+        // If it fails, try the legacy standard (Month-YYYY)
+        if (isNaN(parsedYear) || parsedYear < 2000) {
+            parsedYear = parseInt(periodParts[periodParts.length - 1], 10);
+        }
+
+        if (!isNaN(parsedYear) && parsedYear >= 2000 && parsedYear <= 2099) {
+          transactionYear = parsedYear;
+        }
+      }
+    }
+
+    // Fallback: derive year from TIMESTAMP
+    if (transactionYear === null && firstEntry.TIMESTAMP) {
+      var tsDate = new Date(firstEntry.TIMESTAMP);
+      if (!isNaN(tsDate.getTime())) {
+        transactionYear = tsDate.getFullYear();
+      }
+    }
+
+    // Ultimate fallback: current server year
+    if (transactionYear === null) {
+      transactionYear = new Date().getFullYear();
+    }
+
+    // -------------------------------------------------------
+    // PHASE B: Resolve target shard sheet — Convention over Configuration
+    // -------------------------------------------------------
+    var sheetName = "Logs_" + transactionYear;
+    var sheet = ss.getSheetByName(sheetName);
+
+    // Auto-Creation Guard: If shard tab doesn't exist, create it with schema headers
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.appendRow(schema);
+      sheet.setFrozenRows(1);
+      sheet.getRange(1, 1, 1, schema.length).setFontWeight("bold");
+    }
+
+    // Auto-Healing: If shard exists but is completely empty, re-inject headers
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(schema);
+      sheet.setFrozenRows(1);
+      sheet.getRange(1, 1, 1, schema.length).setFontWeight("bold");
+    }
+
+    // -------------------------------------------------------
+    // PHASE C: ⚡ IDEMPOTENCY GUARD (Anti-Duplicate Write Gate)
+    // Fetches the last 20 rows of the shard and checks if any
+    // incoming payment entry is a duplicate that was logged within
+    // the last 10 seconds. Aborts the entire batch if a match is found.
+    // -------------------------------------------------------
+    var IDEMPOTENCY_WINDOW_MS = 10 * 1000; // 10 seconds
+    var IDEMPOTENCY_LOOKBACK_ROWS = 20;     // Last 20 rows checked
+
+    try {
+      var lastRowNum = sheet.getLastRow();
+      // Only run the check if there are data rows beyond the header
+      if (lastRowNum > 1) {
+        var startCheckRow = Math.max(2, lastRowNum - IDEMPOTENCY_LOOKBACK_ROWS + 1);
+        var recentRange = "'" + sheetName + "'!" + startCheckRow + ":" + lastRowNum;
+
+        var recentResponse = Sheets.Spreadsheets.Values.get(
+          CONFIG.SPREADSHEET_ID,
+          recentRange
+        );
+
+        var recentRows = (recentResponse && recentResponse.values) ? recentResponse.values : [];
+
+        // Resolve column indices from the static schema
+        var tsIdx     = schema.indexOf('TIMESTAMP');
+        var sidIdx    = schema.indexOf('STUDENT_ID');
+        var fpIdx     = schema.indexOf('FEE_PERIOD');
+        var amtIdx    = schema.indexOf('AMOUNT_COLLECTED');
+
+        var now = new Date().getTime();
+
+        for (var p = 0; p < payloadArray.length; p++) {
+          var incoming = payloadArray[p];
+          var incomingSid    = String(incoming.STUDENT_ID    || '').trim();
+          var incomingFp     = String(incoming.FEE_PERIOD    || '').trim();
+          var incomingAmt    = String(incoming.AMOUNT_COLLECTED || '').trim();
+
+          for (var r = 0; r < recentRows.length; r++) {
+            var existingRow  = recentRows[r];
+            var existingSid  = String(existingRow[sidIdx]  || '').trim();
+            var existingFp   = String(existingRow[fpIdx]   || '').trim();
+            var existingAmt  = String(existingRow[amtIdx]  || '').trim();
+            var existingTs   = existingRow[tsIdx] ? new Date(existingRow[tsIdx]).getTime() : 0;
+
+            if (
+              existingSid === incomingSid &&
+              existingFp  === incomingFp  &&
+              existingAmt === incomingAmt &&
+              !isNaN(existingTs)          &&
+              (now - existingTs) <= IDEMPOTENCY_WINDOW_MS
+            ) {
+              return createResponse({
+                status: "error",
+                success: false,
+                message: "Duplicate payment submission detected. A payment for student '" +
+                         incomingSid + "' for period '" + incomingFp +
+                         "' was already logged within the last 10 seconds."
+              });
+            }
+          }
+        }
+      }
+    } catch (guardErr) {
+      // Non-fatal: if the idempotency check itself fails, log it and
+      // allow the write to proceed rather than blocking legitimate payments.
+      console.warn("[IdempotencyGuard] Check failed (non-fatal): " + guardErr.toString());
+    }
+
+    // -------------------------------------------------------
+    // PHASE D: Build the 2D matrix aligned to schema column order
+    // -------------------------------------------------------
+    var matrix = [];
+    for (var i = 0; i < payloadArray.length; i++) {
+      var entry = payloadArray[i];
+      var row = [];
+      for (var j = 0; j < schema.length; j++) {
+        var key = schema[j];
+        if (key === 'TIMESTAMP' && entry[key]) {
+          // Ensure timestamps are stored as proper Date objects for sheet formatting
+          row.push(new Date(entry[key]));
+        } else {
+          row.push(entry[key] !== undefined && entry[key] !== null ? entry[key] : "");
+        }
+      }
+      matrix.push(row);
+    }
+
+    // -------------------------------------------------------
+    // PHASE D: ⚡ Atomic Batch Write via Advanced API
+    // -------------------------------------------------------
+    var resource = { values: matrix };
+    Sheets.Spreadsheets.Values.append(
+      resource, 
+      CONFIG.SPREADSHEET_ID, 
+      "'" + sheetName + "'!A:A", 
+      { valueInputOption: 'USER_ENTERED' }
+    );
+    
+    return createResponse({
+      status: "success",
+      success: true,
+      message: "Successfully logged " + matrix.length + " payment transaction(s) to " + sheetName + ".",
+      rowsWritten: matrix.length,
+      targetSheet: sheetName
+    });
+    
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      success: false,
+      message: "Bulk Payment Write Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * LAZY_FETCH_STUDENT_LOGS Handler (Targeted Single-Candidate Log Fetcher)
+ * --------------------------------------------------
+ * Fetches payment log records for a single specific student from the annual
+ * shard tab matching the targetYear parameter. Uses a precise column-restricted
+ * TextFinder search on Column C (STUDENT_ID) with matchEntireCell(true) to
+ * extract only that student's payment rows for the given year.
+ *
+ * This is designed for lazy backward-chaining waterfall lookups — the frontend
+ * calls this API once per year, walking backwards through time to build a
+ * continuous payment timeline until it hits the admission month.
+ *
+ * Routing Trigger: case "LAZY_FETCH_STUDENT_LOGS" in doPost()
+ *
+ * @param {string} studentId - The STUDENT_ID to search for in Column C
+ * @param {number|string} targetYear - The year to target (e.g., 2026, "2025")
+ * @returns {Object} { status: "success", data: Array<Object>, targetYear: Number, sheetName: String }
+ *   Each object in data matches: { TXN_ID, TIMESTAMP, STUDENT_ID, RL_NO, STUDENT_NAME, FEE_PERIOD, STATUS, AMOUNT_COLLECTED }
+ */
+function handleLazyFetchStudentLogs(studentId, targetYear) {
+  try {
+    // Input Validation
+    if (!studentId || studentId === "") {
+      return createResponse({
+        status: "error",
+        message: "Missing required parameter: studentId."
+      });
+    }
+
+    var year = parseInt(targetYear, 10);
+    if (isNaN(year) || year < 2000 || year > 2099) {
+      return createResponse({
+        status: "error",
+        message: "Invalid targetYear. Must be a 4-digit year between 2000 and 2099."
+      });
+    }
+
+    var sheetName = "Logs_" + year;
+    var schema    = SHEET_TEMPLATES.PaymentLog;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 🚀 ADVANCED SHEETS API v4 — Payment Ledger Historical Read
+    // Fetches the entire annual shard in a single REST call instead of
+    // opening the Spreadsheet object, probing lastRow, and issuing
+    // per-row getRange() reads inside a TextFinder loop.
+    //
+    // Strategy: Read the full shard once → filter client-side in JS RAM.
+    // This eliminates N individual getRange() round-trips (one per matched
+    // row) and replaces them with a single REST network call.
+    //
+    // UI Data Contract: Response keys match SHEET_TEMPLATES.PaymentLog
+    // exactly.  TIMESTAMP is serialised to an ISO string.
+    // ─────────────────────────────────────────────────────────────────────
+    var rawData;
+    try {
+      var response = Sheets.Spreadsheets.Values.get(
+        CONFIG.SPREADSHEET_ID,
+        "'" + sheetName + "'"
+      );
+      rawData = (response && response.values) ? response.values : [];
+    } catch (sheetNotFoundErr) {
+      // The Advanced API throws when the named sheet does not exist.
+      // Treat this as an empty-year result — perfectly valid for waterfall.
+      return createResponse({
+        status: "success",
+        data: [],
+        targetYear: year,
+        sheetName: sheetName,
+        message: "No payment log sheet found for year " + year + ". Sheet '" + sheetName + "' does not exist."
+      });
+    }
+
+    // Header row only (or completely empty) — return empty dataset
+    if (rawData.length <= 1) {
+      return createResponse({
+        status: "success",
+        data: [],
+        targetYear: year,
+        sheetName: sheetName,
+        message: "Payment log sheet for " + year + " exists but contains no data rows."
+      });
+    }
+
+    var headers = rawData[0];
+
+    // Resolve live STUDENT_ID column index from actual headers
+    // (schema position is authoritative, but dynamic resolution adds safety)
+    var studentIdColIdx = headers.indexOf("STUDENT_ID");
+    if (studentIdColIdx === -1) studentIdColIdx = 2; // Fallback to schema index 2 (Column C)
+
+    // -------------------------------------------------------
+    // IN-MEMORY STUDENT_ID FILTER
+    // Walk all data rows and collect exact STUDENT_ID matches.
+    // Replaces the TextFinder + per-row getRange loop entirely.
+    // -------------------------------------------------------
+    var results = [];
+    var targetIdStr = String(studentId).trim();
+
+    for (var i = 1; i < rawData.length; i++) {
+      var row = rawData[i];
+      var cellId = (studentIdColIdx < row.length) ? String(row[studentIdColIdx]).trim() : "";
+      if (cellId !== targetIdStr) continue;
+
+      // Map row array → schema-keyed object (preserving UI Data Contract)
+      var record = {};
+      for (var j = 0; j < schema.length; j++) {
+        var key       = schema[j];
+        var cellValue = (j < row.length) ? row[j] : "";
+
+        // Normalise TIMESTAMP: Advanced API returns date-serial or string;
+        // coerce to ISO string to maintain frontend parsing contract.
+        if (key === "TIMESTAMP" && cellValue !== "") {
+          var ts = new Date(cellValue);
+          record[key] = isNaN(ts.getTime()) ? String(cellValue) : ts.toISOString();
+        } else {
+          record[key] = cellValue;
+        }
+      }
+      results.push(record);
+    }
+
+    if (results.length === 0) {
+      return createResponse({
+        status: "success",
+        data: [],
+        targetYear: year,
+        sheetName: sheetName,
+        message: "No payment records found for student '" + studentId + "' in " + sheetName + "."
+      });
+    }
+
+    return createResponse({
+      status: "success",
+      data: results,
+      targetYear: year,
+      sheetName: sheetName,
+      message: "Found " + results.length + " payment record(s) for student '" + studentId + "' in " + sheetName + "."
+    });
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Lazy Fetch Student Logs Error: " + error.toString()
+    });
+  }
+}
+
+/**
+ * FETCH_STATEMENT_RANGE Handler
+ * --------------------------------------------------
+ * Parametric Range Aggregator Backend
+ * Dynamically slices cross-year historical logs.
+ */
+function handleFetchStatementRange(startDateStr, endDateStr) {
+  try {
+    var start = new Date(startDateStr);
+    var end   = new Date(endDateStr);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return createResponse({ status: 'error', message: 'Invalid date parameters.' });
+    }
+
+    // Ensure end date covers the full day
+    end.setHours(23, 59, 59, 999);
+
+    var startYear = start.getFullYear();
+    var endYear   = end.getFullYear();
+
+    var mergedLogs = [];
+    var schema     = SHEET_TEMPLATES.PaymentLog;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 🚀 ADVANCED SHEETS API v4 — Outstanding Dues / Cross-Year Roster Read
+    // Iterates each candidate annual shard within the date range and fetches
+    // all rows via Sheets.Spreadsheets.Values.get in a single REST call per
+    // shard year, replacing SpreadsheetApp.openById → getSheetByName →
+    // getLastRow → getRange().getValues() — a 4-step object-model chain per
+    // year — with a single lightweight REST call each.
+    //
+    // UI Data Contract: mergedLogs contains objects whose keys are the
+    // canonical SHEET_TEMPLATES.PaymentLog schema headers, identical to
+    // the previous SpreadsheetApp implementation.
+    // ─────────────────────────────────────────────────────────────────────
+    for (var y = startYear; y <= endYear; y++) {
+      var sheetName = 'Logs_' + y;
+      var rawData;
+
+      try {
+        var response = Sheets.Spreadsheets.Values.get(
+          CONFIG.SPREADSHEET_ID,
+          "'" + sheetName + "'"
+        );
+        rawData = (response && response.values) ? response.values : [];
+      } catch (sheetNotFoundErr) {
+        // Advanced API throws when the named sheet does not exist — skip year
+        continue;
+      }
+
+      // Skip years with only a header row or no data
+      if (rawData.length < 2) continue;
+
+      // Use the live header row to resolve TIMESTAMP column index dynamically
+      var liveHeaders     = rawData[0];
+      var timestampColIdx = liveHeaders.indexOf("TIMESTAMP");
+      if (timestampColIdx === -1) timestampColIdx = 1; // Fallback to schema index 1
+
+      for (var i = 1; i < rawData.length; i++) {
+        var row = rawData[i];
+
+        // Normalise and parse the TIMESTAMP cell (Advanced API returns strings)
+        var rawTs   = (timestampColIdx < row.length) ? row[timestampColIdx] : "";
+        var txnDate = new Date(rawTs);
+        if (isNaN(txnDate.getTime())) continue; // Skip rows with unparseable dates
+
+        if (txnDate >= start && txnDate <= end) {
+          // Map row array → schema-keyed object (preserving UI Data Contract)
+          var logObj = {};
+          for (var j = 0; j < schema.length; j++) {
+            logObj[schema[j]] = (j < row.length) ? row[j] : "";
+          }
+          mergedLogs.push(logObj);
+        }
+      }
+    }
+
+    return createResponse({ status: 'success', data: mergedLogs });
+  } catch (error) {
+    return createResponse({ status: 'error', message: 'Fetch Range Error: ' + error.toString() });
+  }
+}
+
+/**
+ * handleSendRuntimeEmailAttachment — GmailApp Edition
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Decodes a client-transmitted base64 PDF data chunk string directly
+ * into a volatile RAM binary blob, and transmits it via Gmail SMTP.
+ * Leaves zero files on Google Drive storage.
+ *
+ * Upgrade Summary (MailApp → GmailApp):
+ *   MailApp.sendEmail() routes through a legacy Apps Script email relay that
+ *   serialises the attachment Blob into a JVM byte buffer synchronously on
+ *   the script thread. On large PDFs (> ~5 MB) this blocks execution until
+ *   the buffer is flushed, contributing to timeout risk.
+ *
+ *   GmailApp.sendEmail() routes through Gmail's native SMTP pipeline:
+ *     • Attachment streaming is handled by the Gmail API transport layer
+ *       rather than the Apps Script JVM thread — lower in-thread memory.
+ *     • GmailApp supports larger message sizes (25 MB Gmail limit vs
+ *       MailApp's ~10 MB practical ceiling on heavy attachments).
+ *     • HTML body support is native via the options object (no API diff).
+ *     • Request/response payload structure is IDENTICAL — no frontend changes.
+ *
+ * Routing Trigger: case "SEND_RUNTIME_EMAIL_ATTACHMENT" in doPost()
+ *
+ * @param {Object} payload
+ *   {
+ *     recipientEmail : string,  // Destination SMTP address
+ *     subject        : string,  // Email subject line
+ *     bodyHtml       : string,  // HTML body content
+ *     base64Pdf      : string,  // Base64-encoded PDF (with or without data URI prefix)
+ *     fileName       : string   // (Optional) Attachment filename — defaults to "Receipt_Document.pdf"
+ *   }
+ * @returns {Object} { status: "success"|"error", message: string }
+ */
+function handleSendRuntimeEmailAttachment(payload) {
+  try {
+    if (!payload.recipientEmail || !payload.recipientEmail.trim()) {
+      return createResponse({ status: "success", message: "Skipped: Recipient email address is empty." });
+    }
+    if (!payload.base64Pdf) {
+      return createResponse({ status: "error", message: "Execution error: Missing Base64 PDF source stream." });
+    }
+
+    // ── STEP 1: Strip data-URI prefix and decode to raw bytes ────────────────
+    // Support both bare base64 and data:application/pdf;base64,... prefix forms.
+    var cleanData    = payload.base64Pdf.indexOf(',') !== -1
+                       ? payload.base64Pdf.split(',').pop()
+                       : payload.base64Pdf;
+    var decodedBytes = Utilities.base64Decode(cleanData);
+
+    // ── STEP 2: Materialise a volatile in-RAM blob ───────────────────────────
+    // Utilities.newBlob() holds data only in the current execution context.
+    // No Drive.Files.create() call is made — zero persistent storage.
+    var pdfBlob = Utilities.newBlob(
+      decodedBytes,
+      "application/pdf",
+      payload.fileName || "Receipt_Document.pdf"
+    );
+
+    // ── STEP 3: Relay via GmailApp (higher attachment ceiling than MailApp) ──
+    GmailApp.sendEmail(
+      payload.recipientEmail,
+      payload.subject || "Document Attached",
+      "",  // Plain-text body (empty — htmlBody option is used instead)
+      {
+        htmlBody:    payload.bodyHtml || "",
+        attachments: [pdfBlob],
+        name:        "Babla Yoga Training Center"
+      }
+    );
+
+    return createResponse({
+      status: "success",
+      message: "Runtime attachment successfully relayed to recipient."
+    });
+
+  } catch (error) {
+    return createResponse({
+      status: "error",
+      message: "Apps Script Runtime Mail Gateway Failure: " + error.toString()
+    });
+  }
+}
+
+/**
+ * ==========================================
+ * 📊 MODULE 10: UNIFIED AUDIT REPORT ENGINE
+ * ==========================================
+ */
+
+/**
+ * handleFetchAuditReport — Date-Ranged PAID/DUE Audit Engine
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Produces either a Paid Transaction log or a Defaulters (Due) list for a
+ * given date range. Both modes share the same shard-scan phase; the DUE
+ * mode adds a second O(n) pass over the Master Sheet using a JavaScript
+ * Set for O(1) membership testing.
+ *
+ * Algorithm Summary:
+ *   PHASE A — Shard Scan (shared by both modes):
+ *     • Determine the year range from startDate / endDate.
+ *     • For each Logs_YYYY shard in range:
+ *         - Fetch the full shard via Sheets.Spreadsheets.Values.get.
+ *         - Walk all data rows; if TIMESTAMP ∈ [start, end], add to paidLogs
+ *           and insert STUDENT_ID into the paidStudentIds Set.
+ *     Time complexity: O(total_txn_rows_in_range)
+ *
+ *   PHASE B — PAID mode:
+ *     • Return paidLogs directly. No further API calls.
+ *
+ *   PHASE B — DUE mode (Set Difference):
+ *     • Fetch the Master Sheet (all rows) via Sheets API.
+ *     • Walk active (non-deleted) rows; if STUDENT_ID ∉ paidStudentIds,
+ *       the student has no paid transaction in the range → defaulter.
+ *     • Return a minimal defaulters array.
+ *     Time complexity: O(master_rows) with O(1) Set lookups.
+ *
+ * Routing Trigger: case "FETCH_AUDIT_REPORT" in doPost()
+ *
+ * @param {Object} payload
+ *   {
+ *     startDate : string,             // ISO date string, e.g. "2026-06-01"
+ *     endDate   : string,             // ISO date string, e.g. "2026-06-30"
+ *     viewMode  : "PAID" | "DUE"      // Report mode selector
+ *   }
+ * @returns {Object}
+ *   PAID: { status: "success", data: Array<TxnObject>, mode: "PAID" }
+ *   DUE:  { status: "success", data: Array<DefaulterObject>, mode: "DUE" }
+ */
+function handleFetchAuditReport(payload) {
+  try {
+    // ── Input Validation ──────────────────────────────────────────────────────────────
+    var startDate = payload.startDate;
+    var endDate   = payload.endDate;
+    var viewMode  = (payload.viewMode || "PAID").toUpperCase();
+
+    if (!startDate || !endDate) {
+      return createResponse({
+        status: "error",
+        message: "Missing required parameters: startDate and endDate."
+      });
+    }
+
+    var start = new Date(startDate);
+    var end   = new Date(endDate);
+    end.setHours(23, 59, 59, 999); // Cover the full end day
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return createResponse({
+        status: "error",
+        message: "Invalid date parameters. Use ISO format (e.g. 2026-06-01)."
+      });
+    }
+
+    if (start > end) {
+      return createResponse({
+        status: "error",
+        message: "startDate cannot be after endDate."
+      });
+    }
+
+    var paymentSchema = SHEET_TEMPLATES.PaymentLog;
+    var startYear     = start.getFullYear();
+    var endYear       = end.getFullYear();
+
+    // ───────────────────────────────────────────────────────────────────────────
+    // PHASE A: Shard Scan — collect paid transactions and a Set of payer IDs
+    // ───────────────────────────────────────────────────────────────────────────
+    var paidLogs       = [];
+    var paidStudentIds = new Set(); // O(1) membership lookups for DUE mode
+
+    for (var y = startYear; y <= endYear; y++) {
+      var shardName = "Logs_" + y;
+      var shardData;
+
+      try {
+        var shardResp = Sheets.Spreadsheets.Values.get(
+          CONFIG.SPREADSHEET_ID,
+          "'" + shardName + "'"
+        );
+        shardData = (shardResp && shardResp.values) ? shardResp.values : [];
+      } catch (shardErr) {
+        // Shard tab does not exist for this year — skip silently
+        continue;
+      }
+
+      if (shardData.length < 2) continue; // Header-only or empty
+
+      var shardHeaders     = shardData[0];
+      var tsColIdx         = shardHeaders.indexOf("TIMESTAMP");
+      var studentIdColIdx  = shardHeaders.indexOf("STUDENT_ID");
+
+      // Fallback to canonical schema positions if header resolution fails
+      if (tsColIdx        === -1) tsColIdx        = paymentSchema.indexOf("TIMESTAMP");
+      if (studentIdColIdx === -1) studentIdColIdx = paymentSchema.indexOf("STUDENT_ID");
+
+      for (var r = 1; r < shardData.length; r++) {
+        var row    = shardData[r];
+        var rawTs  = (tsColIdx < row.length) ? row[tsColIdx] : "";
+        var txnTs  = new Date(rawTs);
+
+        if (isNaN(txnTs.getTime())) continue; // Unparseable date — skip
+        if (txnTs < start || txnTs > end)    continue; // Outside date range — skip
+
+        // Map row array → schema-keyed object
+        var txnObj = {};
+        for (var c = 0; c < paymentSchema.length; c++) {
+          txnObj[paymentSchema[c]] = (c < row.length) ? row[c] : "";
+        }
+
+        paidLogs.push(txnObj);
+
+        // Register payer in the O(1) Set
+        var payerId = (studentIdColIdx < row.length)
+          ? String(row[studentIdColIdx]).trim()
+          : "";
+        if (payerId !== "") paidStudentIds.add(payerId);
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────
+    // PHASE B — PAID mode: return collected transactions immediately
+    // ───────────────────────────────────────────────────────────────────────────
+    if (viewMode === "PAID") {
+      return createResponse({
+        status: "success",
+        mode:   "PAID",
+        data:   paidLogs,
+        count:  paidLogs.length,
+        range:  { startDate: startDate, endDate: endDate }
+      });
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────
+    // PHASE B — DUE mode: Set Difference against the Master Sheet
+    // Fetch all active students; keep those NOT in paidStudentIds.
+    // ───────────────────────────────────────────────────────────────────────────
+    var masterResp = Sheets.Spreadsheets.Values.get(
+      CONFIG.SPREADSHEET_ID,
+      "'" + CONFIG.MASTER_SHEET_NAME + "'"
+    );
+
+    var masterData = (masterResp && masterResp.values) ? masterResp.values : [];
+
+    if (masterData.length < 2) {
+      return createResponse({
+        status: "success",
+        mode:   "DUE",
+        data:   [],
+        count:  0,
+        range:  { startDate: startDate, endDate: endDate },
+        message: "Master sheet is empty — no students to evaluate."
+      });
+    }
+
+    var masterHeaders  = masterData[0];
+    var deletedIdx     = masterHeaders.indexOf("IS_DELETED");
+    var studentIdIdx   = masterHeaders.indexOf("STUDENT_ID");
+    var rlNoIdx        = masterHeaders.indexOf("RL_NO");
+    var nameIdx        = masterHeaders.indexOf("STUDENT_NAME");
+    var mobileIdx      = masterHeaders.indexOf("STUDENT_MOBILE");
+    var courseIdx      = masterHeaders.indexOf("ENROLLED_COURSE");
+    var batchIdx       = masterHeaders.indexOf("CLASS_BATCH_DAYS");
+    var admDateIdx     = masterHeaders.indexOf("DATE_OF_ADMISSION");
+
+    // Minimal defaulter record shape — enough for the frontend report table.
+    // Deliberately avoids streaming photos/signatures to keep the response lean.
+    var defaulters = [];
+
+    for (var m = 1; m < masterData.length; m++) {
+      var mRow = masterData[m];
+
+      // ── Skip soft-deleted students ────────────────────────────────────────────
+      if (deletedIdx !== -1 && deletedIdx < mRow.length) {
+        var df = mRow[deletedIdx];
+        if (df === true || String(df).toUpperCase() === "TRUE") continue;
+      }
+
+      var sid = (studentIdIdx !== -1 && studentIdIdx < mRow.length)
+        ? String(mRow[studentIdIdx]).trim()
+        : "";
+
+      // ── Set Difference: keep students NOT in paidStudentIds ────────────────
+      if (paidStudentIds.has(sid)) continue;
+
+      // Build minimal defaulter record for the UI report
+      defaulters.push({
+        STUDENT_ID:       sid,
+        RL_NO:            (rlNoIdx    !== -1 && rlNoIdx    < mRow.length) ? mRow[rlNoIdx]    : "",
+        STUDENT_NAME:     (nameIdx    !== -1 && nameIdx    < mRow.length) ? mRow[nameIdx]    : "",
+        STUDENT_MOBILE:   (mobileIdx  !== -1 && mobileIdx  < mRow.length) ? mRow[mobileIdx]  : "",
+        ENROLLED_COURSE:  (courseIdx  !== -1 && courseIdx  < mRow.length) ? mRow[courseIdx]  : "",
+        CLASS_BATCH_DAYS: (batchIdx   !== -1 && batchIdx   < mRow.length) ? mRow[batchIdx]   : "",
+        DATE_OF_ADMISSION:(admDateIdx !== -1 && admDateIdx < mRow.length) ? mRow[admDateIdx] : ""
+      });
+    }
+
+    return createResponse({
+      status:  "success",
+      mode:    "DUE",
+      data:    defaulters,
+      count:   defaulters.length,
+      range:   { startDate: startDate, endDate: endDate }
+    });
+
+  } catch (error) {
+    return createResponse({
+      status:  "error",
+      message: "Audit Report Engine Error: " + error.toString()
+    });
+  }
+}

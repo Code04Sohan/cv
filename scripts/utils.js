@@ -1,0 +1,170 @@
+/**
+ * ==========================================
+ * 🛠️ UI UTILITIES (utils.js)
+ * ==========================================
+ * Reusable interface controllers (Toasts, Modals, Loading States)
+ */
+
+window.UIUtils = (function () {
+    'use strict';
+
+    /**
+     * Date formatter for ISO strings (e.g. 2026-06-03T18:30:00.000Z -> 03-06-2026)
+     */
+    function cleanDateTimeString(isoString) {
+        if (!isoString) return 'N/A';
+        try {
+            const dateObj = new Date(isoString);
+            if (isNaN(dateObj.getTime())) return isoString; // Fallback
+
+            // Formats to DD-MM-YYYY
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const year = dateObj.getFullYear();
+
+            return `${day}-${month}-${year}`;
+        } catch (e) {
+            return isoString;
+        }
+    }
+
+    /**
+     * Toast Notification Engine
+     * @param {string} message - The message to display
+     * @param {string} type - 'success', 'error', or 'info'
+     */
+    function showToast(message, type = "success") {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+
+        let colors = 'bg-slate-800 text-white border-slate-700'; // default info
+        let icon = `<svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+
+        if (type === 'success') {
+            colors = 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800';
+            icon = `<svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+        } else if (type === 'error') {
+            colors = 'bg-rose-50 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200 border-rose-200 dark:border-rose-800';
+            icon = `<svg class="w-5 h-5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+        }
+
+        toast.className = `px-4 py-3 rounded-xl border shadow-lg text-sm font-bold flex items-center gap-3 animate-fade-in ${colors}`;
+        toast.innerHTML = `${icon} <span>${message}</span>`;
+
+        container.appendChild(toast);
+
+        // Auto-remove after 4 seconds
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(10px)';
+            toast.style.transition = 'all 0.3s ease-out';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    /**
+     * Modal Management
+     */
+    function openModal(modalId) {
+        const overlay = document.getElementById('globalOverlay');
+        const modal = document.getElementById(modalId);
+
+        if (overlay && modal) {
+            overlay.classList.replace('overlay-hidden', 'overlay-visible');
+            modal.classList.replace('modal-hidden', 'modal-visible');
+        }
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.replace('modal-visible', 'modal-hidden');
+        }
+
+        // Check if any other modals are still open
+        const openModals = document.querySelectorAll('.modal-visible');
+        if (openModals.length === 0) {
+            document.getElementById('globalOverlay').classList.replace('overlay-visible', 'overlay-hidden');
+        }
+    }
+
+    /**
+     * API Fetch Wrapper with timeout and standardized error handling
+     */
+    async function fetchFromEngine(payload) {
+        const MAX_RETRIES = 3;
+        const delay = ms => new Promise(r => setTimeout(r, ms));
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const response = await fetch(window.SystemConfig.API_URL, {
+                    method: "POST",
+                    body: JSON.stringify(payload),
+                    redirect: "follow"
+                });
+                return await response.json();
+            } catch (error) {
+                if (attempt < MAX_RETRIES) {
+                    console.warn('[Network] Retrying request...');
+                    await delay(500 * attempt);
+                } else {
+                    console.error("[Network Error]:", error);
+                    throw new Error("Cloud communication failure.");
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetch a Single Candidate's full record from the Engine
+     * @param {string} studentId - The target ID
+     * @returns {Object|null} - The full student record object, or null on failure
+     */
+    async function fetchSingleStudentData(studentId) {
+        if (!studentId) return null;
+
+        try {
+            // FIX: Check if the element exists before modifying its style
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner) {
+                spinner.style.display = 'flex';
+            }
+
+            const payload = {
+                action: "GET_SINGLE_RECORD",
+                token: localStorage.getItem("BAHA_SECURE_TOKEN"),
+                studentId: studentId
+            };
+
+            const response = await fetchFromEngine(payload);
+
+            if (response.status === "success") {
+                return response.data;
+            } else {
+                showToast(response.message || "Failed to fetch record.", "error");
+                return null;
+            }
+        } catch (error) {
+            console.error("Single Fetch Error:", error);
+            showToast("Network error while fetching record.", "error");
+            return null;
+        } finally {
+            // FIX: Check if the element exists before modifying its style
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner) {
+                spinner.style.display = 'none';
+            }
+        }
+    }
+
+    return {
+        showToast,
+        openModal,
+        closeModal,
+        fetchFromEngine,
+        cleanDateTimeString,
+        fetchSingleStudentData
+    };
+})();
