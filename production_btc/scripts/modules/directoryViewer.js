@@ -26,11 +26,6 @@ window.DirectoryViewerModule = (function () {
     const _dirRowsPerPage = 8;
     let _dirFilteredPool  = []; // Repopulated by initializeDirectoryPool() and applyDirectoryFilters()
 
-    // ── Sort Mode State ───────────────────────────────────────────────────
-    // 'rollno'   → ascending numeric sort by RL_NO  (default on load)
-    // 'date'     → descending sort by DATE_OF_ADMISSION (newest first)
-    let _dirSortMode = 'rollno';
-
     /** Schema mapping — matches Google Sheet column headers exactly */
     const SCHEMA = [
         'STUDENT_ID', 'RL_NO', 'SESSION', 'DATE_OF_ADMISSION', 'ENROLLED_COURSE', 'CLASS_BATCH_DAYS',
@@ -170,70 +165,44 @@ window.DirectoryViewerModule = (function () {
                 </div>
 
                 <!-- Hidden Filter Panel -->
-                <div id="filterPanel" class="hidden bg-slate-900/80 p-4 rounded-xl border border-slate-800 mb-4">
-                    <div class="flex flex-col md:flex-row items-start md:items-end gap-4">
-
-                        <!-- Enrolled Class -->
-                        <div class="space-y-1 flex-1 min-w-[160px]">
-                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Enrolled Class</label>
-                            <select id="filter_course" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
-                                <option value="">All Classes</option>
-                                <option value="Teachers Training">Teachers Training</option>
-                                <option value="Diploma">Diploma</option>
-                                <option value="Yoga/Hula Hoopla/Karate/Meditation">Yoga/Hula Hoopla/Karate/Meditation</option>
-                            </select>
+                <div id="filterPanel" class="hidden grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-900/80 p-4 rounded-xl border border-slate-800 mb-4">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Enrolled Class</label>
+                        <select id="filter_course" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                            <option value="">All Classes</option>
+                            <option value="Teachers Training">Teachers Training</option>
+                            <option value="Diploma">Diploma</option>
+                            <option value="Yoga/Hula Hoopla/Karate/Meditation">Yoga/Hula Hoopla/Karate/Meditation</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Batch Days</label>
+                        <select id="filter_batch" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                            <option value="">All Batches</option>
+                            <option value="Evening: Mon-Wed-Fri">Evening: Mon-Wed-Fri</option>
+                            <option value="Evening: Sat-Sun-Wed">Evening: Sat-Sun-Wed</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Academic Session</label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="filter_sess_from" placeholder="From" min="2000" max="2099" class="w-full px-2 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm text-center">
+                            <span class="text-slate-500 font-bold">-</span>
+                            <input type="number" id="filter_sess_to" placeholder="To" min="2000" max="2099" class="w-full px-2 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm text-center">
                         </div>
-
-                        <!-- Batch Days -->
-                        <div class="space-y-1 flex-1 min-w-[160px]">
-                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Batch Days</label>
-                            <select id="filter_batch" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
-                                <option value="">All Batches</option>
-                                <option value="Evening: Mon-Wed-Fri">Evening: Mon-Wed-Fri</option>
-                                <option value="Evening: Sat-Sun-Wed">Evening: Sat-Sun-Wed</option>
-                            </select>
-                        </div>
-
-                        <!-- Gender -->
-                        <div class="space-y-1 flex-1 min-w-[130px]">
-                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gender</label>
-                            <select id="filter_gender" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
-                                <option value="">All Genders</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-
-                        <!-- ── Order By: Sliding Pill Toggle ───────────────────────────── -->
-                        <div class="space-y-1 shrink-0">
-                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Order By</label>
-                            <div id="dir_sort_toggle"
-                                 role="group"
-                                 aria-label="Sort order toggle"
-                                 class="relative flex items-center bg-slate-800 border border-slate-700 rounded-xl p-1 gap-0 w-[260px] select-none"
-                                 style="height:38px;">
-                                <!-- Sliding pill background -->
-                                <div id="dir_sort_pill"
-                                     class="absolute top-1 left-1 h-[calc(100%-8px)] rounded-lg bg-brand-600 shadow transition-all duration-300 ease-in-out"
-                                     style="width:calc(50% - 4px); transform:translateX(0);"></div>
-                                <!-- By Roll No -->
-                                <button id="dir_sort_rollno"
-                                        type="button"
-                                        class="relative z-10 flex-1 text-xs font-bold py-1 px-2 rounded-lg transition-colors duration-200 text-white"
-                                        onclick="window.DirectoryViewerModule.setSortMode('rollno')">
-                                    By Roll No
-                                </button>
-                                <!-- Admission Date -->
-                                <button id="dir_sort_date"
-                                        type="button"
-                                        class="relative z-10 flex-1 text-xs font-bold py-1 px-2 rounded-lg transition-colors duration-200 text-slate-400"
-                                        onclick="window.DirectoryViewerModule.setSortMode('date')">
-                                    Admission Date
-                                </button>
-                            </div>
-                        </div>
-
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gender</label>
+                        <select id="filter_gender" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+                            <option value="">All Genders</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Admission Year</label>
+                        <input type="number" id="filter_admission_year" placeholder="e.g. 2024" min="2000" max="2099" class="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm">
                     </div>
                 </div>
 
@@ -273,126 +242,78 @@ window.DirectoryViewerModule = (function () {
     function applyDirectoryFilters() {
         const searchInput = document.getElementById('dir_search_input');
         const query = (searchInput?.value || '').toLowerCase().trim();
-
+        
         const fCourse = document.getElementById('filter_course')?.value || '';
-        const fBatch  = document.getElementById('filter_batch')?.value  || '';
+        const fBatch = document.getElementById('filter_batch')?.value || '';
+        const fSessFrom = document.getElementById('filter_sess_from')?.value || '';
+        const fSessTo = document.getElementById('filter_sess_to')?.value || '';
         const fGender = document.getElementById('filter_gender')?.value || '';
+        const fYear = document.getElementById('filter_admission_year')?.value || '';
 
         _filteredData = _directoryData.filter(item => {
             // 1. Text Matcher (Name, ID, Mobile, RL_NO)
             let textMatch = true;
             if (query !== '') {
-                textMatch =
-                    (item.STUDENT_NAME   && item.STUDENT_NAME.toLowerCase().includes(query))   ||
-                    (item.STUDENT_ID     && String(item.STUDENT_ID).toLowerCase().includes(query)) ||
+                textMatch = 
+                    (item.STUDENT_NAME && item.STUDENT_NAME.toLowerCase().includes(query)) ||
+                    (item.STUDENT_ID && String(item.STUDENT_ID).toLowerCase().includes(query)) ||
                     (item.STUDENT_MOBILE && String(item.STUDENT_MOBILE).toLowerCase().includes(query)) ||
-                    (item.RL_NO          && String(item.RL_NO).toLowerCase().includes(query)); // Explicit String Casting Fix
+                    (item.RL_NO && String(item.RL_NO).toLowerCase().includes(query)); // Explicit String Casting Fix
             }
             if (!textMatch) return false;
 
             // 2. Multi-Drop Parameters
-            if (fCourse && item.ENROLLED_COURSE    !== fCourse) return false;
-            if (fBatch  && item.CLASS_BATCH_DAYS   !== fBatch)  return false;
-            if (fGender && item.GENDER             !== fGender) return false;
+            if (fCourse && item.ENROLLED_COURSE !== fCourse) return false;
+            if (fBatch && item.CLASS_BATCH_DAYS !== fBatch) return false;
+            if (fGender && item.GENDER !== fGender) return false;
+
+            // 3. Academic Session (Split parsing)
+            if (fSessFrom || fSessTo) {
+                let sFrom = '', sTo = '';
+                if (item.SESSION && item.SESSION.includes('-')) {
+                    const parts = item.SESSION.split('-');
+                    sFrom = parts[0];
+                    sTo = parts[1];
+                }
+                if (fSessFrom && sFrom !== fSessFrom) return false;
+                if (fSessTo && sTo !== fSessTo) return false;
+            }
+
+            // 4. Strict Admission Year Evaluation
+            if (fYear) {
+                const doa = item.DATE_OF_ADMISSION || '';
+                const rowYear = doa.length >= 4 ? doa.substring(0, 4) : '';
+                if (rowYear !== fYear) return false;
+            }
 
             return true;
         });
-
-        // ── SORT: Apply active sort mode before feeding the pool ──────────
-        _applySort(_filteredData);
 
         window.currentFilteredDataset = [..._filteredData];
 
         // ── PAGINATION INTEGRATION: Feed the filtered result into the pool
         // and always reset to page 1 on any keystroke/filter change so the
         // user is never left staring at an out-of-bounds empty page.
-        _dirFilteredPool = [..._filteredData];
-        _dirCurrentPage  = 1;
+        _dirFilteredPool  = [..._filteredData];
+        _dirCurrentPage   = 1;
         renderPaginatedDirectory();
     }
 
-    /**
-     * _applySort
-     * -------------------------------------------------------------------
-     * In-place sorts the supplied array according to the active _dirSortMode.
-     *
-     *  'rollno' → ascending numeric sort by RL_NO  (safe parseInt fallback)
-     *  'date'   → descending sort by DATE_OF_ADMISSION (newest first)
-     *
-     * @param {Array<Object>} arr — The array to sort in place
-     */
-    function _applySort(arr) {
-        if (_dirSortMode === 'rollno') {
-            arr.sort((a, b) => {
-                const nA = parseInt(a.RL_NO, 10);
-                const nB = parseInt(b.RL_NO, 10);
-                const valA = isNaN(nA) ? Infinity : nA;
-                const valB = isNaN(nB) ? Infinity : nB;
-                return valA - valB; // Ascending: 1, 2, 3 …
-            });
-        } else {
-            // 'date' — descending chronological (newest first)
-            arr.sort((a, b) => {
-                const dateA = a.DATE_OF_ADMISSION ? new Date(a.DATE_OF_ADMISSION) : new Date(0);
-                const dateB = b.DATE_OF_ADMISSION ? new Date(b.DATE_OF_ADMISSION) : new Date(0);
-                return dateB - dateA;
-            });
-        }
-    }
-
-    /**
-     * setSortMode (public)
-     * -------------------------------------------------------------------
-     * Called by the inline onclick handlers on the sort pill toggle buttons.
-     * Updates _dirSortMode, syncs the pill visual, and re-renders.
-     *
-     * @param {'rollno'|'date'} mode
-     */
-    function setSortMode(mode) {
-        if (mode === _dirSortMode) return; // No-op if already active
-        _dirSortMode = mode;
-        _syncSortToggleUI();
-        applyDirectoryFilters();
-    }
-
-    /**
-     * _syncSortToggleUI
-     * -------------------------------------------------------------------
-     * Moves the sliding pill and updates button text colours to reflect
-     * the currently active sort mode. Safe-fails if the DOM isn't ready.
-     */
-    function _syncSortToggleUI() {
-        const pill       = document.getElementById('dir_sort_pill');
-        const btnRollno  = document.getElementById('dir_sort_rollno');
-        const btnDate    = document.getElementById('dir_sort_date');
-        if (!pill || !btnRollno || !btnDate) return;
-
-        if (_dirSortMode === 'rollno') {
-            pill.style.transform     = 'translateX(0)';
-            btnRollno.style.color    = '#ffffff';
-            btnDate.style.color      = '#94a3b8'; // slate-400
-        } else {
-            pill.style.transform     = 'translateX(calc(100% + 4px))';
-            btnDate.style.color      = '#ffffff';
-            btnRollno.style.color    = '#94a3b8'; // slate-400
-        }
-    }
-
     function attachSearchListener() {
-        // Academic Session (filter_sess_from, filter_sess_to) and
-        // Admission Year (filter_admission_year) filters have been removed.
-        // Only the three remaining dropdowns + search input are wired here.
         const triggers = [
             'dir_search_input',
             'filter_course',
             'filter_batch',
-            'filter_gender'
+            'filter_sess_from',
+            'filter_sess_to',
+            'filter_gender',
+            'filter_admission_year'
         ];
 
         triggers.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
-                el.addEventListener('input',  applyDirectoryFilters);
+                el.addEventListener('input', applyDirectoryFilters);
                 el.addEventListener('change', applyDirectoryFilters);
             }
         });
@@ -580,19 +501,17 @@ window.DirectoryViewerModule = (function () {
      * @param {Array<Object>} rawCandidatesArray — Direct server payload
      */
     function initializeDirectoryPool(rawCandidatesArray) {
-        // Default sort mode on first load is 'rollno' (ascending by RL_NO).
-        // _dirSortMode was already initialised to 'rollno' at declaration.
-        // _applySort() sorts in-place so we work on a copy first.
-        _dirFilteredPool = [...rawCandidatesArray];
-        _applySort(_dirFilteredPool);
+        // Descending chronological sort — newest admissions first
+        _dirFilteredPool = [...rawCandidatesArray].sort((a, b) => {
+            const dateB = b.DATE_OF_ADMISSION ? new Date(b.DATE_OF_ADMISSION) : new Date(0);
+            const dateA = a.DATE_OF_ADMISSION ? new Date(a.DATE_OF_ADMISSION) : new Date(0);
+            return dateB - dateA;
+        });
 
         // Sync _filteredData reference so CSV export and getRecordByIndex
-        // still return the full sorted set
+        // still return the full chronologically-ordered set
         _filteredData = [..._dirFilteredPool];
         window.currentFilteredDataset = [..._filteredData];
-
-        // Sync toggle UI in case the filterPanel is already visible
-        _syncSortToggleUI();
 
         _dirCurrentPage = 1;
         renderPaginatedDirectory();
@@ -746,11 +665,15 @@ window.DirectoryViewerModule = (function () {
     /**
      * Routes row data to the PDFGenerator utility for admission form reprint.
      */
-    function printPDF(index) {
+    async function printPDF(index) {
         const rowData = _directoryData[index];
         if (!rowData) return;
+        
+        const fullData = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
+        if (!fullData) return;
+
         if (window.PDFGenerator && typeof window.PDFGenerator.createApplicationForm === 'function') {
-            window.PDFGenerator.createApplicationForm(rowData);
+            window.PDFGenerator.createApplicationForm(fullData);
         } else {
             if (window.UIUtils) window.UIUtils.showToast("PDF utility is not loaded.", "error");
         }
@@ -855,8 +778,11 @@ window.DirectoryViewerModule = (function () {
      * Mounts a premium, read-only candidate profile dashboard.
      * CORS-Safe: No Drive image streaming. Uses redirect buttons instead.
      */
-    function viewRecord(index) {
-        const data = _directoryData[index];
+    async function viewRecord(index) {
+        const rowData = _directoryData[index];
+        if (!rowData) return;
+        
+        const data = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
         if (!data) return;
 
         // --- Raw Drive URLs for redirect buttons (no CORS fetch) ---
@@ -1052,8 +978,11 @@ window.DirectoryViewerModule = (function () {
      * session split, Aadhaar masking, and Base64 media upload fields.
      * Excludes financial/fee and declaration fields from editing.
      */
-    function editRecord(index) {
-        const data = _directoryData[index];
+    async function editRecord(index) {
+        const rowData = _directoryData[index];
+        if (!rowData) return;
+        
+        const data = await window.UIUtils.fetchSingleStudentData(rowData.STUDENT_ID);
         if (!data) return;
 
         // Reset temporary state
@@ -1563,8 +1492,7 @@ window.DirectoryViewerModule = (function () {
         getBase64FromDriveUrl,
         exportToCsv,
         getRecordByIndex,
-        goToPage,           // Phase 3: Pagination navigation bridge
-        setSortMode         // Sort pill toggle bridge (rollno | date)
+        goToPage            // Phase 3: Pagination navigation bridge
     };
 
 })();
