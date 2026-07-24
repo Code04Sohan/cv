@@ -23,7 +23,12 @@ window.SystemConfig = {
     },
 
     // 📧 Contact Links
-    SUPPORT_EMAIL: "sohanadhikari04@gmail.com"
+    SUPPORT_EMAIL: "sohanadhikari04@gmail.com",
+
+    // 🖊️ Owner Signature Image
+    // Set to a local path or URL to embed the owner's signature in generated receipts.
+    // Leave as an empty string "" to use the safe styled-line fallback instead.
+    OWNER_SIGNATURE_URL: "resources/siganture.jpeg"
 };
 
 /**
