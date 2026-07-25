@@ -111,7 +111,7 @@ window.FeePDFGeneratorModule = (function () {
         const amountDisplay = Number(summaryData.amount || 0).toLocaleString('en-IN');
         const txnId = summaryData.txnId || 'N/A';
         const feePeriods = summaryData.feePeriods || 'N/A';
-        const paymentDate = student.TIMESTAMP || dateString;
+        const paymentDate = summaryData.timestamp || dateString;
 
         // ══════════════════════════════════════════════════════════════════
         // 1. CENTER HEADER BLOCK

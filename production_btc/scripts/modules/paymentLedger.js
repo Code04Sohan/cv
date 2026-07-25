@@ -631,9 +631,10 @@ window.PaymentLedgerModule = (function () {
                 : 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400';
 
             // Safely escape all data values that will appear in inline onclick attributes
-            const safeTxnId     = escAttr(item.TXN_ID);
-            const safeAmount    = escAttr(item.AMOUNT_COLLECTED);
+            const safeTxnId = escAttr(item.TXN_ID);
+            const safeAmount = escAttr(item.AMOUNT_COLLECTED);
             const safeFeePeriod = escAttr(item.FEE_PERIOD);
+            const safeTimeStamp = escAttr(item.TIMESTAMP);
 
             return `
             <tr class="border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
@@ -668,7 +669,7 @@ window.PaymentLedgerModule = (function () {
                                 const s = (window.MasterCandidateCache || []).find(function(x){ return x.STUDENT_ID === '${safeStudentId}'; });
                                 const candidate = s || { STUDENT_ID: '${safeStudentId}', STUDENT_NAME: '${escAttr(item.STUDENT_NAME)}', RL_NO: '${escAttr(item.RL_NO)}', ENROLLED_COURSE: '${escAttr(item._course)}' };
                                 if (window.FeePDFGeneratorModule && window.FeePDFGeneratorModule.downloadFeePDF) {
-                                    window.FeePDFGeneratorModule.downloadFeePDF(candidate, { txnId: '${safeTxnId}', amount: '${safeAmount}', feePeriods: '${safeFeePeriod}' });
+                                    window.FeePDFGeneratorModule.downloadFeePDF(candidate, { txnId: '${safeTxnId}', amount: '${safeAmount}', feePeriods: '${safeFeePeriod}', timestamp: '${safeTimeStamp}' });
                                 } else if (window.UIUtils) {
                                     window.UIUtils.showToast('PDF module not loaded.', 'error');
                                 }
